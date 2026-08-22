@@ -10,6 +10,17 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5175';
 
+// ── Security: Force HTTPS in production ──────────────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+  app.use((req, res, next) => {
+    if (req.header('x-forwarded-proto') !== 'https') {
+      return res.redirect(`https://${req.header('host')}${req.url}`);
+    }
+    next();
+  });
+}
+
 // ── CORS: Restrict to frontend origin ──────────────────────────────────────
 app.use(
   cors({

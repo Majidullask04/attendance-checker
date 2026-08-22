@@ -89,7 +89,7 @@ export function useAttendanceStore(authUser) {
     } catch (err) {
       console.error('Error loading records:', err);
     }
-  }, [authUser]);
+  }, [authUser?.id]);
 
   const loadCurrentQR = useCallback(async () => {
     try {
@@ -114,7 +114,7 @@ export function useAttendanceStore(authUser) {
     } catch (err) {
       console.error('Error loading team data:', err);
     }
-  }, [authUser]);
+  }, [authUser?.role]);
 
   const loadAuditData = useCallback(async () => {
     if (authUser?.role !== 'admin') return;
@@ -124,7 +124,7 @@ export function useAttendanceStore(authUser) {
     } catch (err) {
       console.error('Error loading audit data:', err);
     }
-  }, [authUser]);
+  }, [authUser?.role]);
 
   const syncOfflineQueue = useCallback(async () => {
     if (isSyncing) return;
@@ -145,7 +145,7 @@ export function useAttendanceStore(authUser) {
     } finally {
       setIsSyncing(false);
     }
-  }, [isSyncing, authUser, addToast, loadRecords, loadTeamData, loadAuditData]);
+  }, [isSyncing, authUser?.role, addToast, loadRecords, loadTeamData, loadAuditData]);
 
   // Initial load
   useEffect(() => {
@@ -163,7 +163,7 @@ export function useAttendanceStore(authUser) {
         syncOfflineQueue();
       }
     }
-  }, [authUser, loadRecords, loadCurrentQR, loadTeamData, loadAuditData, syncOfflineQueue]);
+  }, [authUser?.id, authUser?.role, loadRecords, loadCurrentQR, loadTeamData, loadAuditData, syncOfflineQueue]);
 
   // ── Admin Polling: live refresh every 10 seconds ──────────────────────────
   useEffect(() => {
@@ -173,7 +173,7 @@ export function useAttendanceStore(authUser) {
       loadAuditData();
     }, 10000);
     return () => clearInterval(intervalId);
-  }, [authUser, loadTeamData, loadAuditData]);
+  }, [authUser?.role, loadTeamData, loadAuditData]);
 
   // ── QR Actions ────────────────────────────────────────────────────────────
   const generateNewQRToken = useCallback(
@@ -230,6 +230,16 @@ export function useAttendanceStore(authUser) {
 
         if (res.offline) {
           setOfflineQueue(api.getOfflineQueue());
+          const localRecord = {
+            id: `offline-${Date.now()}`,
+            user_id: authUser?.id,
+            record_type: 'check_in',
+            recorded_at: new Date().toISOString(),
+            qr_token: payload?.t || payload?.token,
+            status: 'verified',
+            is_offline_sync: 1,
+          };
+          setCurrentCheckIn(localRecord);
           setAttendanceState('checked_in');
           addToast('📵 Saved offline. Will sync when connection is restored.', 'info', 6000);
           return { success: true, offline: true };
@@ -284,6 +294,7 @@ export function useAttendanceStore(authUser) {
 
         if (res.offline) {
           setOfflineQueue(api.getOfflineQueue());
+          setCurrentCheckIn(null);
           setAttendanceState('idle');
           addToast('📵 Checkout saved offline. Will sync when connection is restored.', 'info', 6000);
           return { success: true, offline: true };

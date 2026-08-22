@@ -8,7 +8,7 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     
@@ -19,7 +19,7 @@ export default function LoginScreen() {
 
     try {
       setIsLoading(true);
-      login(email.trim());
+      await login(email.trim());
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -27,10 +27,14 @@ export default function LoginScreen() {
     }
   };
 
-  const handleQuickLogin = (targetEmail) => {
+  const handleQuickLogin = async (targetEmail) => {
     setEmail(targetEmail);
     setError('');
-    login(targetEmail);
+    try {
+      await login(targetEmail);
+    } catch (err) {
+      setError(err.message || 'Login failed');
+    }
   };
 
   return (

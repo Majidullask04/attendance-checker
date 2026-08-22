@@ -52,7 +52,7 @@ export default function QRGenerator({ store }) {
   const handleRegenerate = async () => {
     setIsGenerating(true);
     try {
-      const newToken = generateNewQRToken(activeLocation);
+      const newToken = await generateNewQRToken(activeLocation);
       addToast('New QR Token generated. Previous QR is now invalid.', 'success');
     } catch (e) {
       addToast('Error generating token', 'error');
@@ -70,7 +70,7 @@ export default function QRGenerator({ store }) {
   };
 
   const qrUsageCount = todayRecords.filter(
-    (r) => r.qrTokenId === currentQRToken?.tokenId
+    (r) => (r.qr_token || r.qrToken) === (currentQRToken?.token || currentQRToken?.tokenId)
   ).length;
 
   return (

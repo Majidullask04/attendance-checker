@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useTimer } from '../hooks/useTimer.js';
 import { formatTime } from '../utils/formatters.js';
@@ -43,7 +43,7 @@ export default function CheckIn({ store }) {
   }
 
   // If Employee: Render the Employee QR Scanner & Status Portal
-  const handleScanSuccess = async (scannedString) => {
+  const handleScanSuccess = useCallback(async (scannedString) => {
     setIsScannerOpen(false);
 
     if (attendanceState === 'idle') {
@@ -51,7 +51,7 @@ export default function CheckIn({ store }) {
     } else if (attendanceState === 'checked_in') {
       await checkOutWithQR(scannedString);
     }
-  };
+  }, [attendanceState, checkInWithQR, checkOutWithQR]);
 
   return (
     <div className="screen fade-in">

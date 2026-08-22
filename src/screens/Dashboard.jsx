@@ -37,17 +37,22 @@ function WeekChart({ records, employees, isUserOnly, userEmail }) {
             if (isUserOnly) {
               const checkedIn = records.some(
                 (r) =>
-                  (r.user_id === userEmail || r.userEmail === userEmail || true) &&
+                  (r.user_id === userEmail || r.user_email === userEmail) &&
                   (r.record_type === 'check_in' || r.recordType === 'check_in') &&
                   new Date(r.recorded_at || r.recordedAt).toDateString() === dayStr
               );
               presentCount = checkedIn ? 1 : 0;
             } else {
-              presentCount = records.filter(
-                (r) =>
-                  (r.record_type === 'check_in' || r.recordType === 'check_in') &&
-                  new Date(r.recorded_at || r.recordedAt).toDateString() === dayStr
-              ).length;
+              const presentUserIds = new Set(
+                records
+                  .filter(
+                    (r) =>
+                      (r.record_type === 'check_in' || r.recordType === 'check_in') &&
+                      new Date(r.recorded_at || r.recordedAt).toDateString() === dayStr
+                  )
+                  .map((r) => r.user_id || r.userId)
+              );
+              presentCount = presentUserIds.size;
             }
           }
 

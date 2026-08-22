@@ -50,7 +50,12 @@ async function offlineAwareRequest(path, options, offlineEntry) {
     return await request(path, options);
   } catch (err) {
     // If it's a network error (not a server rejection), queue for offline sync
-    if (!navigator.onLine || err.message === 'Failed to fetch' || err.name === 'TypeError') {
+    const isNetworkError = !navigator.onLine || 
+                           err instanceof TypeError || 
+                           err.message === 'Failed to fetch' || 
+                           err.message.includes('NetworkError');
+                           
+    if (isNetworkError) {
       addToOfflineQueue(offlineEntry);
       return {
         success: true,
