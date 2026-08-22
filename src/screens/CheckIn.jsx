@@ -1,193 +1,249 @@
-import { useState, useEffect } from 'react';
-import { formatTime } from '../utils/formatters';
-
-const STATE_CONFIG = {
-  idle:         { label: 'Ready to Check In',  color: 'neutral', action: 'CHECK IN',  btnClass: 'btn-checkin' },
-  checking_in:  { label: 'Validating…',         color: 'accent',  action: null,        btnClass: 'btn-loading' },
-  checked_in:   { label: 'Checked In',          color: 'success', action: 'CHECK OUT', btnClass: 'btn-checkout' },
-  on_break:     { label: 'On Break',            color: 'warning', action: 'END BREAK', btnClass: 'btn-endbreak' },
-  checking_out: { label: 'Processing…',         color: 'accent',  action: null,        btnClass: 'btn-loading' },
-};
-
-function PulseRing({ color }) {
-  return (
-    <div className={`pulse-ring-wrap pulse-ring-wrap--${color}`}>
-      <div className="pulse-ring" />
-      <div className="pulse-ring pulse-ring--delay" />
-    </div>
-  );
-}
-
-function VerificationStep({ icon, label, done, active }) {
-  return (
-    <div className={`verify-step ${done ? 'done' : ''} ${active ? 'active' : ''}`}>
-      <div className="verify-step-icon">{done ? '✓' : active ? '⟳' : icon}</div>
-      <span className="verify-step-label">{label}</span>
-    </div>
-  );
-}
+import { useState } from 'react';
+import { useAuth } from '../auth/AuthContext.jsx';
+import { useTimer } from '../hooks/useTimer.js';
+import { formatTime } from '../utils/formatters.js';
+import QRGenerator from '../components/QRGenerator.jsx';
+import QRScanner from '../components/QRScanner.jsx';
 
 export default function CheckIn({ store }) {
+  const { isAdmin } = useAuth();
   const {
-    attendanceState, currentCheckIn, activeLocation,
-    checkIn, checkOut, startBreak, endBreak, isOnline, offlineQueue
+    attendanceState,
+    currentCheckIn,
+    activeLocation,
+    currentQRToken,
+    checkInWithQR,
+    checkOutWithQR,
+    startBreak,
+    endBreak,
+    isOnline,
+    isLoading,
   } = store;
 
-  const [elapsed, setElapsed] = useState('0m 0s');
-  const [verifyStep, setVerifyStep] = useState(0); // 0=idle, 1=gps, 2=geofence, 3=dupe-check, 4=done
-  const cfg = STATE_CONFIG[attendanceState];
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const recordedTime = currentCheckIn?.recorded_at || currentCheckIn?.recordedAt;
+  const timer = useTimer(recordedTime);
 
-  useEffect(() => {
-    if (!currentCheckIn) { setElapsed('0m 0s'); return; }
-    const tick = () => {
-      const diff = Date.now() - new Date(currentCheckIn.recordedAt).getTime();
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setElapsed(h > 0 ? `${h}h ${m}m ${s}s` : `${m}m ${s}s`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [currentCheckIn]);
+  // If Admin: Render the full QR Management Portal
+  if (isAdmin) {
+    return (
+      <div className="screen fade-in">
+        <div className="screen-header">
+          <div>
+            <h1 className="screen-title">QR Code Station Manager</h1>
+            <p className="screen-sub">
+              Display this dynamic QR code at the work entrance for staff to check in and out.
+            </p>
+          </div>
+        </div>
 
-  // Animate validation steps during checking_in
-  useEffect(() => {
-    if (attendanceState === 'checking_in') {
-      setVerifyStep(1);
-      const t1 = setTimeout(() => setVerifyStep(2), 500);
-      const t2 = setTimeout(() => setVerifyStep(3), 1000);
-      const t3 = setTimeout(() => setVerifyStep(4), 1500);
-      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-    } else {
-      setVerifyStep(0);
+        <QRGenerator store={store} />
+      </div>
+    );
+  }
+
+  // If Employee: Render the Employee QR Scanner & Status Portal
+  const handleScanSuccess = async (scannedString) => {
+    setIsScannerOpen(false);
+
+    if (attendanceState === 'idle') {
+      await checkInWithQR(scannedString);
+    } else if (attendanceState === 'checked_in') {
+      await checkOutWithQR(scannedString);
     }
-  }, [attendanceState]);
-
-  const handlePrimary = () => {
-    if (attendanceState === 'idle') checkIn();
-    else if (attendanceState === 'checked_in') checkOut();
-    else if (attendanceState === 'on_break') endBreak();
   };
 
   return (
     <div className="screen fade-in">
       <div className="screen-header">
         <div>
-          <h1 className="screen-title">Check In / Out</h1>
-          <p className="screen-sub">Tap to record your attendance · GPS + WiFi verified</p>
+          <h1 className="screen-title">Shift Attendance & QR Scan</h1>
+          <p className="screen-sub">
+            Scan the active QR code at your station or job site to record your shift.
+          </p>
         </div>
       </div>
 
       <div className="checkin-layout">
-        {/* Main action card */}
+        {/* Main Status & Action Card */}
         <div className="checkin-card">
-          {/* Status indicator */}
-          <div className={`checkin-status checkin-status--${cfg.color}`}>
-            <PulseRing color={cfg.color} />
+          {/* Status Indicator */}
+          <div
+            className={`checkin-status checkin-status--${
+              attendanceState === 'checked_in'
+                ? 'success'
+                : attendanceState === 'on_break'
+                ? 'warning'
+                : 'neutral'
+            }`}
+          >
+            <div className="pulse-ring-wrap">
+              <div className="pulse-ring" />
+              <div className="pulse-ring pulse-ring--delay" />
+            </div>
             <div className="checkin-status-inner">
-              <div className="checkin-status-label">{cfg.label}</div>
-              {currentCheckIn && <div className="checkin-status-time">{formatTime(currentCheckIn.recordedAt)}</div>}
+              <div className="checkin-status-label">
+                {attendanceState === 'checked_in'
+                  ? 'Checked In (Active)'
+                  : attendanceState === 'on_break'
+                  ? 'On Break'
+                  : attendanceState === 'checking_in'
+                  ? 'Verifying…'
+                  : 'Ready to Check In'}
+              </div>
+              {recordedTime && (
+                <div className="checkin-status-time">
+                  Since {formatTime(recordedTime)}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Timer */}
+          {/* Live Shift Timer */}
           {attendanceState === 'checked_in' && (
             <div className="checkin-timer">
-              <div className="checkin-timer-label">Time on site</div>
-              <div className="checkin-timer-value font-mono">{elapsed}</div>
+              <div className="checkin-timer-label">Active Shift Duration</div>
+              <div className="checkin-timer-value font-mono">
+                {timer.formatted}
+              </div>
             </div>
           )}
 
-          {/* Validation steps (visible while processing) */}
-          {(attendanceState === 'checking_in' || attendanceState === 'checking_out') && (
-            <div className="verify-steps">
-              <VerificationStep icon="📍" label="Acquiring GPS"    done={verifyStep > 1} active={verifyStep === 1} />
-              <VerificationStep icon="⊙"  label="Geofence check"  done={verifyStep > 2} active={verifyStep === 2} />
-              <VerificationStep icon="⊡"  label="Duplicate check" done={verifyStep > 3} active={verifyStep === 3} />
-              <VerificationStep icon="✦"  label="Signing record"  done={verifyStep > 4} active={verifyStep === 4} />
-            </div>
-          )}
+          {/* Action Trigger Buttons */}
+          <div className="checkin-actions-stack">
+            {attendanceState === 'idle' && (
+              <button
+                id="btn-open-scanner"
+                className="btn-action btn-checkin"
+                onClick={() => setIsScannerOpen(true)}
+                disabled={isLoading}
+              >
+                <span className="btn-icon">📷</span>
+                <span>{isLoading ? 'Processing…' : 'Open Scanner to Check In'}</span>
+              </button>
+            )}
 
-          {/* Primary Action Button */}
-          {cfg.action && (
-            <button
-              id={`btn-${attendanceState}-action`}
-              className={`btn-action ${cfg.btnClass}`}
-              onClick={handlePrimary}
-              disabled={attendanceState === 'checking_in' || attendanceState === 'checking_out'}
-            >
-              {cfg.action}
-            </button>
-          )}
+            {attendanceState === 'checked_in' && (
+              <>
+                <button
+                  id="btn-scan-checkout"
+                  className="btn-action btn-checkout"
+                  onClick={() => setIsScannerOpen(true)}
+                  disabled={isLoading}
+                >
+                  <span className="btn-icon">📷</span>
+                  <span>{isLoading ? 'Processing…' : 'Scan QR to Check Out'}</span>
+                </button>
 
-          {/* Break button */}
-          {attendanceState === 'checked_in' && (
-            <button id="btn-break-start" className="btn-secondary" onClick={startBreak}>
-              Start Break
-            </button>
-          )}
+                <button
+                  id="btn-start-break"
+                  className="btn-secondary"
+                  onClick={startBreak}
+                >
+                  ☕ Take Break
+                </button>
+              </>
+            )}
 
-          {/* Offline warning */}
+            {attendanceState === 'on_break' && (
+              <button
+                id="btn-end-break"
+                className="btn-action btn-endbreak"
+                onClick={endBreak}
+              >
+                <span>Resume Shift</span>
+              </button>
+            )}
+          </div>
+
+          {/* Offline Notice */}
           {!isOnline && (
             <div className="offline-banner">
-              <span>📵 Offline — your check-in will sync when connected</span>
-              {offlineQueue.length > 0 && <span className="badge badge--warning">{offlineQueue.length} queued</span>}
+              <span>📵 Network Offline — Real-time server sync paused.</span>
             </div>
           )}
         </div>
 
-        {/* Info panels */}
+        {/* Informational Panels */}
         <div className="checkin-info-col">
           <div className="info-card">
-            <div className="info-card-title">📍 Location</div>
+            <div className="info-card-title">📍 Assigned Station</div>
             <div className="info-card-value">{activeLocation.name}</div>
-            <div className="info-card-sub">Radius: {activeLocation.radius}m · WiFi: {activeLocation.wifi_ssid}</div>
+            <div className="info-card-sub">
+              Geofence Radius: {activeLocation.radius}m · WiFi: {activeLocation.wifi_ssid}
+            </div>
             <div className="info-card-coords font-mono">
-              {activeLocation.lat.toFixed(4)}, {activeLocation.lng.toFixed(4)}
+              GPS: {activeLocation.lat.toFixed(4)}, {activeLocation.lng.toFixed(4)}
             </div>
           </div>
 
           <div className="info-card">
-            <div className="info-card-title">🔒 Security</div>
+            <div className="info-card-title">🔒 Server-Side Multi-Factor Verification</div>
             <div className="info-card-items">
-              {[
-                ['GPS Verification',    '✓'],
-                ['WiFi Cross-check',    '✓'],
-                ['Device Fingerprint',  '✓'],
-                ['Clock Drift Check',   '✓'],
-                ['Idempotency Guard',   '✓'],
-                ['Rate Limit Active',   '✓'],
-              ].map(([label, val]) => (
-                <div key={label} className="info-card-row">
-                  <span className="info-card-row-label">{label}</span>
-                  <span className="info-card-row-val text-success">{val}</span>
-                </div>
-              ))}
+              <div className="info-card-row">
+                <span className="info-card-row-label">QR Dynamic Token</span>
+                <span className="info-card-row-val text-success">✓ Enforced</span>
+              </div>
+              <div className="info-card-row">
+                <span className="info-card-row-label">Anti-Replay Lock</span>
+                <span className="info-card-row-val text-success">✓ Enforced in SQLite</span>
+              </div>
+              <div className="info-card-row">
+                <span className="info-card-row-label">Device Signature</span>
+                <span className="info-card-row-val text-success">✓ Fingerprinted</span>
+              </div>
+              <div className="info-card-row">
+                <span className="info-card-row-label">Audit Trail Log</span>
+                <span className="info-card-row-val text-success">✓ Immutable API</span>
+              </div>
             </div>
           </div>
 
           {currentCheckIn && (
             <div className="info-card">
-              <div className="info-card-title">📋 Current Record</div>
+              <div className="info-card-title">📋 Current Shift Record</div>
               <div className="info-card-items">
-                {[
-                  ['Verified by',  currentCheckIn.verifiedBy.toUpperCase()],
-                  ['Accuracy',     `${currentCheckIn.accuracyMeters}m`],
-                  ['Confidence',   `${currentCheckIn.confidenceScore}%`],
-                  ['Offline Sync', currentCheckIn.isOfflineSync ? 'Yes' : 'No'],
-                  ['Device ID',    currentCheckIn.deviceId],
-                ].map(([label, val]) => (
-                  <div key={label} className="info-card-row">
-                    <span className="info-card-row-label">{label}</span>
-                    <span className="info-card-row-val font-mono">{val}</span>
-                  </div>
-                ))}
+                <div className="info-card-row">
+                  <span className="info-card-row-label">Checked In At</span>
+                  <span className="info-card-row-val font-mono">
+                    {formatTime(recordedTime)}
+                  </span>
+                </div>
+                <div className="info-card-row">
+                  <span className="info-card-row-label">Method</span>
+                  <span className="info-card-row-val font-mono text-accent">
+                    QR CODE SCAN
+                  </span>
+                </div>
+                <div className="info-card-row">
+                  <span className="info-card-row-label">Confidence</span>
+                  <span className="info-card-row-val font-mono text-success">
+                    {currentCheckIn.confidence_score || currentCheckIn.confidenceScore || 90}%
+                  </span>
+                </div>
+                <div className="info-card-row">
+                  <span className="info-card-row-label">Token Reference</span>
+                  <span
+                    className="info-card-row-val font-mono"
+                    title={currentCheckIn.qr_token || currentCheckIn.qrTokenId}
+                  >
+                    {(currentCheckIn.qr_token || currentCheckIn.qrTokenId || '').slice(0, 14)}…
+                  </span>
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* QR Camera Scanner Modal */}
+      {isScannerOpen && (
+        <QRScanner
+          onScan={handleScanSuccess}
+          onClose={() => setIsScannerOpen(false)}
+          currentQRToken={currentQRToken}
+        />
+      )}
     </div>
   );
 }

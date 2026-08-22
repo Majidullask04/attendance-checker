@@ -1,38 +1,66 @@
 import './index.css';
 import './App.css';
-import { useAttendanceStore } from './store/useStore';
-import Sidebar from './components/Sidebar';
-import { ToastContainer } from './components/Toast';
-import Dashboard from './screens/Dashboard';
-import CheckIn from './screens/CheckIn';
-import MyRecords from './screens/MyRecords';
-import Team from './screens/Team';
-import AuditLog from './screens/AuditLog';
+import { AuthProvider, useAuth } from './auth/AuthContext.jsx';
+import LoginScreen from './auth/LoginScreen.jsx';
+import { useAttendanceStore } from './store/useStore.js';
+import Sidebar from './components/Sidebar.jsx';
+import { ToastContainer } from './components/Toast.jsx';
+import Dashboard from './screens/Dashboard.jsx';
+import CheckIn from './screens/CheckIn.jsx';
+import MyRecords from './screens/MyRecords.jsx';
+import Team from './screens/Team.jsx';
+import AuditLog from './screens/AuditLog.jsx';
 
 const SCREENS = {
   dashboard: Dashboard,
-  checkin:   CheckIn,
+  checkin: CheckIn,
   myrecords: MyRecords,
-  team:      Team,
-  audit:     AuditLog,
+  team: Team,
+  audit: AuditLog,
 };
 
-export default function App() {
-  const store = useAttendanceStore();
-  const { activeScreen, setActiveScreen, toasts, dismissToast,
-          currentUser, stats, isOnline, offlineQueue, isSyncing, syncOfflineQueue } = store;
+function AppShell() {
+  const { user, isAdmin, logout, isLoading } = useAuth();
+  const store = useAttendanceStore(user);
+  const {
+    activeScreen,
+    setActiveScreen,
+    toasts,
+    dismissToast,
+    stats,
+    isOnline,
+    offlineQueue = [],
+    isSyncing,
+    syncOfflineQueue,
+  } = store;
 
-  const Screen = SCREENS[activeScreen] ?? Dashboard;
+  if (isLoading) {
+    return (
+      <div className="login-screen-wrap">
+        <div className="login-card" style={{ textAlign: 'center', padding: '40px' }}>
+          <div className="live-pulse-dot" style={{ margin: '0 auto 16px' }} />
+          <p style={{ color: 'var(--text-secondary)' }}>Loading session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  const ScreenComponent = SCREENS[activeScreen] ?? Dashboard;
+  const qLen = (offlineQueue || []).length;
 
   return (
     <div className="app-layout">
       <Sidebar
         activeScreen={activeScreen}
         setActiveScreen={setActiveScreen}
-        currentUser={currentUser}
-        stats={stats}
+        currentUser={user}
+        stats={stats || {}}
         isOnline={isOnline}
-        offlineQueue={offlineQueue.length}
+        offlineQueue={qLen}
       />
 
       <div className="app-main">
@@ -41,43 +69,73 @@ export default function App() {
           <div className="app-header-left">
             {!isOnline && (
               <div className="header-offline-badge">
-                <span className="offline-dot" /> Offline
-                {offlineQueue.length > 0 && ` · ${offlineQueue.length} queued`}
+                <span className="offline-dot" /> Offline Mode
+                {qLen > 0 && ` · ${qLen} queued`}
               </div>
             )}
             {isSyncing && (
               <div className="header-syncing">
-                <span className="syncing-spinner" /> Syncing…
+                <span className="syncing-spinner" /> Syncing Records…
               </div>
             )}
           </div>
+
           <div className="app-header-right">
-            {offlineQueue.length > 0 && isOnline && !isSyncing && (
+            {qLen > 0 && isOnline && !isSyncing && (
               <button
                 id="btn-sync-now"
                 className="btn-sync"
                 onClick={syncOfflineQueue}
               >
-                ↑ Sync {offlineQueue.length} record{offlineQueue.length > 1 ? 's' : ''}
+                ↑ Sync {qLen} record{qLen > 1 ? 's' : ''}
               </button>
             )}
-            <div className="header-clock" id="header-clock">
-              {new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+
+            <div className="header-clock font-mono" id="header-clock">
+              {new Date().toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true,
+              })}
             </div>
+
             <div className="header-user">
-              <span className="header-user-avatar">{currentUser.avatar}</span>
-              <span className="header-user-name">{currentUser.name}</span>
+              <span className="header-user-avatar">{user?.avatar || '👤'}</span>
+              <div className="header-user-info-text">
+                <span className="header-user-name">{user?.name || user?.email}</span>
+                <span className={`header-role-pill ${isAdmin ? 'pill-admin' : 'pill-user'}`}>
+                  {isAdmin ? 'Admin' : 'User'}
+                </span>
+              </div>
             </div>
+
+            <button
+              id="btn-header-logout"
+              className="btn-header-logout"
+              onClick={logout}
+              title="Sign Out"
+            >
+              Sign Out
+            </button>
           </div>
         </header>
 
         {/* Screen Content */}
         <main className="app-content" id="main-content" role="main">
-          <Screen store={store} />
+          <ScreenComponent store={store} />
         </main>
       </div>
 
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <ToastContainer toasts={toasts || []} onDismiss={dismissToast} />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
