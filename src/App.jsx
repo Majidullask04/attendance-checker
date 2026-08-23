@@ -1,7 +1,10 @@
 import './index.css';
 import './App.css';
+import { useState } from 'react';
 import { AuthProvider, useAuth } from './auth/AuthContext.jsx';
 import LoginScreen from './auth/LoginScreen.jsx';
+import SignupScreen from './auth/SignupScreen.jsx';
+import PendingApproval from './auth/PendingApproval.jsx';
 import { useAttendanceStore } from './store/useStore.js';
 import Sidebar from './components/Sidebar.jsx';
 import { ToastContainer } from './components/Toast.jsx';
@@ -10,6 +13,7 @@ import CheckIn from './screens/CheckIn.jsx';
 import MyRecords from './screens/MyRecords.jsx';
 import Team from './screens/Team.jsx';
 import AuditLog from './screens/AuditLog.jsx';
+import AdminApprovals from './screens/AdminApprovals.jsx';
 
 const SCREENS = {
   dashboard: Dashboard,
@@ -17,10 +21,37 @@ const SCREENS = {
   myrecords: MyRecords,
   team: Team,
   audit: AuditLog,
+  approvals: AdminApprovals,
 };
 
-function AppShell() {
-  const { user, isAdmin, logout, isLoading } = useAuth();
+function AuthGate() {
+  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const { user, isLoading, pendingApproval } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="login-screen-wrap">
+        <div className="login-card" style={{ textAlign: 'center', padding: '40px' }}>
+          <div className="live-pulse-dot" style={{ margin: '0 auto 16px' }} />
+          <p style={{ color: 'var(--text-secondary)' }}>Loading session…</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (pendingApproval) return <PendingApproval />;
+  
+  if (!user) {
+    return mode === 'login'
+      ? <LoginScreen onToggle={() => setMode('signup')} />
+      : <SignupScreen onToggle={() => setMode('login')} />;
+  }
+  
+  return <AppContent />;
+}
+
+function AppContent() {
+  const { user, isAdmin, logout } = useAuth();
   const store = useAttendanceStore();
   const {
     activeScreen,
@@ -33,21 +64,6 @@ function AppShell() {
     isSyncing,
     syncOfflineQueue,
   } = store;
-
-  if (isLoading) {
-    return (
-      <div className="login-screen-wrap">
-        <div className="login-card" style={{ textAlign: 'center', padding: '40px' }}>
-          <div className="live-pulse-dot" style={{ margin: '0 auto 16px' }} />
-          <p style={{ color: 'var(--text-secondary)' }}>Loading session…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <LoginScreen />;
-  }
 
   const ScreenComponent = SCREENS[activeScreen] ?? Dashboard;
   const qLen = (offlineQueue || []).length;
@@ -135,7 +151,7 @@ function AppShell() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppShell />
+      <AuthGate />
     </AuthProvider>
   );
 }

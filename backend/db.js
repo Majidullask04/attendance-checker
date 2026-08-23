@@ -42,11 +42,13 @@ db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
+    password_hash TEXT,
     name TEXT NOT NULL,
     role TEXT CHECK(role IN ('admin','user')) NOT NULL,
     department TEXT,
     avatar TEXT,
     device_id TEXT,
+    is_approved INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
@@ -99,15 +101,15 @@ db.serialize(() => {
     }
     if (!row || row.count === 0) {
       const users = [
-        ['emp-001', 'mrelectricalworks02@gmail.com', 'Mr. Electrical Admin', 'admin', 'Management', '👑', 'dev-admin'],
-        ['emp-002', 'arjun@mrelectric.com', 'Arjun Mehta', 'user', 'Electrical', '👷', 'dev-a1b2'],
-        ['emp-003', 'priya@mrelectric.com', 'Priya Sharma', 'user', 'Electrical', '👩‍🔧', 'dev-c3d4'],
-        ['emp-004', 'rahul@mrelectric.com', 'Rahul Singh', 'user', 'Plumbing', '🧑‍🔧', 'dev-e5f6'],
-        ['emp-005', 'deepa@mrelectric.com', 'Deepa Nair', 'user', 'Electrical', '👩‍💼', 'dev-g7h8'],
-        ['emp-006', 'vikram@mrelectric.com', 'Vikram Joshi', 'user', 'HVAC', '👨‍🔬', 'dev-i9j0'],
+        ['emp-001', 'mrelectricalworks02@gmail.com', null, 'Mr. Electrical Admin', 'admin', 'Management', '👑', 'dev-admin', 1],
+        ['emp-002', 'arjun@mrelectric.com', null, 'Arjun Mehta', 'user', 'Electrical', '👷', 'dev-a1b2', 1],
+        ['emp-003', 'priya@mrelectric.com', null, 'Priya Sharma', 'user', 'Electrical', '👩‍🔧', 'dev-c3d4', 1],
+        ['emp-004', 'rahul@mrelectric.com', null, 'Rahul Singh', 'user', 'Plumbing', '🧑‍🔧', 'dev-e5f6', 1],
+        ['emp-005', 'deepa@mrelectric.com', null, 'Deepa Nair', 'user', 'Electrical', '👩‍💼', 'dev-g7h8', 1],
+        ['emp-006', 'vikram@mrelectric.com', null, 'Vikram Joshi', 'user', 'HVAC', '👨‍🔬', 'dev-i9j0', 1],
       ];
       const stmt = db.prepare(
-        `INSERT INTO users (id, email, name, role, department, avatar, device_id) VALUES (?,?,?,?,?,?,?)`
+        `INSERT INTO users (id, email, password_hash, name, role, department, avatar, device_id, is_approved) VALUES (?,?,?,?,?,?,?,?,?)`
       );
       users.forEach((u) => stmt.run(u));
       stmt.finalize();

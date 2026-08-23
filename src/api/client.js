@@ -100,8 +100,14 @@ if (typeof window !== 'undefined') {
 
 export const api = {
   // Auth endpoints
-  login: (email) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email }) }),
+  signup: (payload) => request('/auth/signup', { method: 'POST', body: JSON.stringify(payload) }),
+  login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   me: () => request('/auth/me'),
+
+  // Admin approval endpoints
+  getPendingUsers: () => request('/auth/pending'),
+  approveUser: (id) => request(`/auth/approve/${id}`, { method: 'POST' }),
+  rejectUser: (id) => request(`/auth/reject/${id}`, { method: 'POST' }),
 
   // QR endpoints
   getCurrentQR: () => request('/qr-token/current'),

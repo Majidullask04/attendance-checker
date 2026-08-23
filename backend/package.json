@@ -7,6 +7,7 @@
     "dev": "node --watch server.js"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "express-rate-limit": "^8.6.2",

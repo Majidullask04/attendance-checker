@@ -23,6 +23,7 @@ export default function Sidebar({
     { id: 'myrecords', label: 'My Records', icon: '≡', badge: null },
     ...(isAdmin
       ? [
+          { id: 'approvals', label: 'Pending Approvals', icon: '👤', badge: null },
           { id: 'team', label: 'Team Overview', icon: '⊗', badge: null },
           {
             id: 'audit',

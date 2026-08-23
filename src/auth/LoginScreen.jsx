@@ -1,51 +1,45 @@
 import { useState } from 'react';
 import { useAuth } from './AuthContext';
-import { ADMIN_EMAIL } from '../config/auth';
 
-export default function LoginScreen() {
+export default function LoginScreen({ onToggle }) {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
-    if (!email.trim()) {
-      setError('Please enter an email address');
+
+    if (!email.trim() || !password) {
+      setError('Please enter both email and password.');
       return;
     }
 
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      await login(email.trim());
+      await login(email.trim(), password);
     } catch (err) {
-      setError(err.message || 'Login failed');
+      // Handle specific error codes
+      if (err.message?.includes('PENDING_APPROVAL')) {
+        setError('⏳ Your account is pending admin approval. Please wait or contact your administrator.');
+      } else {
+        setError(err.message || 'Invalid email or password.');
+      }
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleQuickLogin = async (targetEmail) => {
-    setEmail(targetEmail);
-    setError('');
-    try {
-      await login(targetEmail);
-    } catch (err) {
-      setError(err.message || 'Login failed');
     }
   };
 
   return (
     <div className="login-page">
       <div className="login-glow-bg" />
-      
       <div className="login-card fade-in">
         <div className="login-header">
           <div className="login-logo-icon">⚡</div>
           <h1 className="login-title">MrElectric</h1>
-          <p className="login-subtitle">Role-Based Attendance & QR Access Portal</p>
+          <p className="login-subtitle">Sign in to your attendance portal</p>
         </div>
 
         {error && (
@@ -57,91 +51,47 @@ export default function LoginScreen() {
 
         <form className="login-form" onSubmit={handleSubmit}>
           <div className="form-group">
-            <label htmlFor="login-email" className="form-label">
-              Work Email Address
-            </label>
-            <div className="input-wrapper">
-              <input
-                id="login-email"
-                type="email"
-                className="form-input font-mono"
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (error) setError('');
-                }}
-                autoComplete="email"
-                autoFocus
-              />
-            </div>
-            <span className="form-hint">
-              Enter your assigned email to access your attendance workspace.
-            </span>
+            <label htmlFor="login-email" className="form-label">Work Email</label>
+            <input
+              id="login-email"
+              type="email"
+              className="form-input font-mono"
+              placeholder="name@company.com"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); if (error) setError(''); }}
+              autoComplete="email"
+              autoFocus
+            />
           </div>
 
-          <button
-            id="btn-login-submit"
-            type="submit"
-            className="btn-login-primary"
-            disabled={isLoading}
-          >
-            {isLoading ? 'Signing In…' : 'Sign In to Portal →'}
+          <div className="form-group">
+            <label htmlFor="login-password" className="form-label">Password</label>
+            <input
+              id="login-password"
+              type="password"
+              className="form-input"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); if (error) setError(''); }}
+              autoComplete="current-password"
+            />
+          </div>
+
+          <button type="submit" className="btn-login-primary" disabled={isLoading}>
+            {isLoading ? 'Signing In…' : 'Sign In →'}
           </button>
         </form>
 
-        <div className="login-divider">
-          <span>or select quick demo profile</span>
-        </div>
+        <div className="login-divider"><span>new employee?</span></div>
 
-        <div className="quick-login-grid">
-          <button
-            type="button"
-            id="btn-quick-admin"
-            className="quick-login-btn quick-login-btn--admin"
-            onClick={() => handleQuickLogin(ADMIN_EMAIL)}
-          >
-            <div className="quick-login-avatar">👑</div>
-            <div className="quick-login-info">
-              <div className="quick-login-name">System Administrator</div>
-              <div className="quick-login-email font-mono">{ADMIN_EMAIL}</div>
-            </div>
-            <span className="badge badge--warning">Admin</span>
-          </button>
-
-          <button
-            type="button"
-            id="btn-quick-user-1"
-            className="quick-login-btn"
-            onClick={() => handleQuickLogin('arjun@mrelectric.com')}
-          >
-            <div className="quick-login-avatar">👷</div>
-            <div className="quick-login-info">
-              <div className="quick-login-name">Arjun Mehta (Technician)</div>
-              <div className="quick-login-email font-mono">arjun@mrelectric.com</div>
-            </div>
-            <span className="badge badge--neutral">User</span>
-          </button>
-
-          <button
-            type="button"
-            id="btn-quick-user-2"
-            className="quick-login-btn"
-            onClick={() => handleQuickLogin('priya@mrelectric.com')}
-          >
-            <div className="quick-login-avatar">👩‍🔧</div>
-            <div className="quick-login-info">
-              <div className="quick-login-name">Priya Sharma (Field Eng)</div>
-              <div className="quick-login-email font-mono">priya@mrelectric.com</div>
-            </div>
-            <span className="badge badge--neutral">User</span>
-          </button>
-        </div>
+        <button type="button" className="btn-secondary" onClick={onToggle} style={{ width: '100%' }}>
+          Create New Account
+        </button>
 
         <div className="login-footer-info">
           <div className="login-security-pill">
             <span className="security-icon">🔒</span>
-            <span>Cryptographic Geofence & QR One-Time Token System</span>
+            <span>Secure password-protected access with admin approval.</span>
           </div>
         </div>
       </div>
