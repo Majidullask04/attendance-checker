@@ -4,7 +4,7 @@ import db from '../db.js';
 import { signToken, verifyToken } from '../middleware/auth.js';
 
 const router = Router();
-const ADMIN_EMAIL = 'mrelectricalworks02@gmail.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@localhost';
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {

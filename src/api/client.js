@@ -24,6 +24,8 @@ function clearOfflineQueue() {
 // ── Core Request Handler ───────────────────────────────────────────────────
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
+  // SECURITY NOTE: localStorage is used for JWT to support static file hosting.
+  // In a production deployment with a custom domain, migrate to httpOnly cookies.
   const token = localStorage.getItem('attendance_token');
 
   const headers = {

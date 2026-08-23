@@ -223,8 +223,11 @@ export function useAttendanceStore() {
 
         const res = await api.checkIn({
           qrPayload: payload,
+          // eslint-disable-next-line sonarjs/pseudo-random
           latitude: activeLocation.lat + (Math.random() - 0.5) * 0.0004,
+          // eslint-disable-next-line sonarjs/pseudo-random
           longitude: activeLocation.lng + (Math.random() - 0.5) * 0.0004,
+          // eslint-disable-next-line sonarjs/pseudo-random
           accuracyMeters: Math.floor(Math.random() * 8) + 4,
           deviceId: authUser?.deviceId || 'web-client',
           deviceTimestamp: new Date().toISOString(),
@@ -287,8 +290,11 @@ export function useAttendanceStore() {
 
         const res = await api.checkOut({
           qrPayload: payload,
+          // eslint-disable-next-line sonarjs/pseudo-random
           latitude: activeLocation.lat + (Math.random() - 0.5) * 0.0004,
+          // eslint-disable-next-line sonarjs/pseudo-random
           longitude: activeLocation.lng + (Math.random() - 0.5) * 0.0004,
+          // eslint-disable-next-line sonarjs/pseudo-random
           accuracyMeters: Math.floor(Math.random() * 8) + 4,
           deviceId: authUser?.deviceId || 'web-client',
           deviceTimestamp: new Date().toISOString(),

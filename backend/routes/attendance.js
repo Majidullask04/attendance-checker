@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomInt } from 'crypto';
 import db from '../db.js';
 import { requireAdmin } from '../middleware/auth.js';
 
@@ -36,6 +36,12 @@ function parseQRPayload(body) {
   const tokenString = data?.token || data?.tokenId || data?.t;
   if (!tokenString || typeof tokenString !== 'string') {
     return { error: 'QR Code signature missing token ID.' };
+  }
+
+  const ALLOWED_KEYS = ['l', 't', 'g', 'locationId', 'token', 'tokenId', 'generatedAt', 'locationName'];
+  const hasUnexpectedKeys = Object.keys(data).some((k) => !ALLOWED_KEYS.includes(k));
+  if (hasUnexpectedKeys) {
+    return { error: 'QR payload contains unexpected fields.' };
   }
 
   return { data, tokenString };
@@ -87,9 +93,9 @@ router.post('/check-in', async (req, res) => {
     }
 
     // 5. Create immutable check-in record
-    const recordId = `rec-${Date.now()}-${userId}-in`;
+    const recordId = `rec-${randomUUID()}`;
     const now = new Date().toISOString();
-    const confidence = Math.floor(Math.random() * 15) + 85;
+    const confidence = randomInt(85, 100);
 
     await db.runAsync(
       `INSERT INTO attendance_records 
@@ -163,7 +169,7 @@ router.post('/check-out', async (req, res) => {
     }
 
     // 4. Create check-out record
-    const recordId = `rec-${Date.now()}-${userId}-out`;
+    const recordId = `rec-${randomUUID()}`;
     const now = new Date().toISOString();
 
     await db.runAsync(
@@ -253,7 +259,7 @@ router.post('/sync-batch', async (req, res) => {
       const confidence = isStillActive ? 85 : 45;
       const status = isStillActive ? 'verified' : 'flagged';
 
-      const recordId = `rec-${Date.now()}-${userId}-${type === 'check_in' ? 'in' : 'out'}-offline-${Math.random().toString(36).slice(2, 6)}`;
+      const recordId = `rec-${randomUUID()}`;
       const recordedAt = timestamp || new Date().toISOString();
 
       await db.runAsync(
@@ -376,6 +382,9 @@ router.patch('/correct/:id', requireAdmin, async (req, res) => {
 
   if (reason.trim().length < 10) {
     return res.status(400).json({ error: 'Correction reason must be at least 10 characters for audit compliance.' });
+  }
+  if (reason.trim().length > 2000) {
+    return res.status(400).json({ error: 'Correction reason must not exceed 2000 characters.' });
   }
 
   try {

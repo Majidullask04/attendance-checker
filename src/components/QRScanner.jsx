@@ -153,25 +153,27 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
             Point camera directly at the Administrator's station QR display.
           </p>
 
-          <div className="scanner-test-actions">
-            <button
-              id="btn-simulate-scan"
-              type="button"
-              className="btn-simulate-scan"
-              onClick={handleSimulateScan}
-            >
-              ⚡ Test Scan Current Station QR
-            </button>
+          {import.meta.env.DEV && (
+            <div className="scanner-test-actions">
+              <button
+                id="btn-simulate-scan"
+                type="button"
+                className="btn-simulate-scan"
+                onClick={handleSimulateScan}
+              >
+                ⚡ Test Scan Current Station QR
+              </button>
 
-            <button
-              id="btn-simulate-expired"
-              type="button"
-              className="btn-simulate-expired"
-              onClick={handleSimulateExpiredScan}
-            >
-              ⚠️ Test Expired Token
-            </button>
-          </div>
+              <button
+                id="btn-simulate-expired"
+                type="button"
+                className="btn-simulate-expired"
+                onClick={handleSimulateExpiredScan}
+              >
+                ⚠️ Test Expired Token
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

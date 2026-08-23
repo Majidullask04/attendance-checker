@@ -1,7 +1,6 @@
 import jwt from 'jsonwebtoken';
 
-const DEV_SECRET = 'mrelectric-super-secure-dev-jwt-secret-2026';
-const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'production' ? null : DEV_SECRET);
+const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET) {
   console.error('FATAL: JWT_SECRET environment variable is not set. Cannot run in production without it.');

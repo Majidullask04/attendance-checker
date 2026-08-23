@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { verifyToken } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
@@ -21,14 +22,31 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// ── Security Headers ───────────────────────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'", FRONTEND_URL],
+    },
+  },
+}));
+
 // ── CORS: Restrict to frontend origin ──────────────────────────────────────
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? [FRONTEND_URL]
+  : [FRONTEND_URL, 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'];
+
 app.use(
   cors({
-    origin: [FRONTEND_URL, 'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
+    origin: allowedOrigins,
     credentials: true,
   })
 );
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '256kb' }));
 
 // ── Rate Limiting: 10 requests per minute on attendance endpoints ──────────
 const attendanceLimiter = rateLimit({
