@@ -21,7 +21,7 @@ const SCREENS = {
 
 function AppShell() {
   const { user, isAdmin, logout, isLoading } = useAuth();
-  const store = useAttendanceStore(user);
+  const store = useAttendanceStore();
   const {
     activeScreen,
     setActiveScreen,

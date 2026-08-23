@@ -305,7 +305,7 @@ export default function Dashboard({ store }) {
           userEmail={user?.email}
         />
         <ActivityFeed
-          records={isAdmin ? records : myRecords}
+          records={isAdmin ? store.auditRecords : myRecords}
           isUserOnly={!isAdmin}
         />
       </div>

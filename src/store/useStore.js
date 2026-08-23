@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { api } from '../api/client.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 const LOCATIONS = [
   { id: 'loc-001', name: 'Main HQ & Warehouse', lat: 28.6139, lng: 77.2090, radius: 150, wifi_ssid: 'MrElectric-HQ' },
@@ -19,7 +20,8 @@ function canTransition(from, to) {
   return VALID_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-export function useAttendanceStore(authUser) {
+export function useAttendanceStore() {
+  const { user: authUser } = useAuth();
   const [attendanceState, setAttendanceState] = useState('idle');
   const [records, setRecords] = useState([]);
   const [teamSummary, setTeamSummary] = useState([]);
