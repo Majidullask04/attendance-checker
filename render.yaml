@@ -1,0 +1,33 @@
+services:
+  # Backend API
+  - type: web
+    name: mrelectric-attendance-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: JWT_SECRET
+        generateValue: true # Render auto-generates a random string
+      - key: ADMIN_EMAIL
+        value: mrelectricalworks02@gmail.com
+      - key: FRONTEND_URL
+        value: https://mrelectric-attendance.onrender.com # We'll update this after frontend deploy
+    disk:
+      name: attendance-data
+      mountPath: /opt/render/project/src/backend
+      sizeGB: 1
+
+  # Frontend Static Site
+  - type: web
+    name: mrelectric-attendance
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://mrelectric-attendance-api.onrender.com/api
