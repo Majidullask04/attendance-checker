@@ -1,33 +1,48 @@
 services:
-  # Backend API
+  # ── Backend API (Node + SQLite on a persistent disk) ────────────────────────
   - type: web
     name: mrelectric-attendance-api
     runtime: node
     rootDir: backend
+    plan: starter # NOTE: persistent disks require a paid instance (not free tier)
     buildCommand: npm install
     startCommand: node server.js
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 3001
+      # SQLite lives on the persistent disk mounted at /var/data (see `disk` below).
+      - key: DB_PATH
+        value: /var/data/database.sqlite
+      # Render generates a strong secret once and keeps it stable across deploys.
       - key: JWT_SECRET
-        generateValue: true # Render auto-generates a random string
+        generateValue: true
+      # Whoever signs up with THIS email is automatically granted the admin role.
       - key: ADMIN_EMAIL
         value: mrelectricalworks02@gmail.com
+      # Allowed browser origin(s) for CORS — comma-separate to allow more than one.
+      # After the first deploy, if Render assigns the frontend a different URL,
+      # update this to the ACTUAL static-site URL and redeploy the API.
       - key: FRONTEND_URL
-        value: https://mrelectric-attendance.onrender.com # We'll update this after frontend deploy
+        value: https://mrelectric-attendance.onrender.com
     disk:
       name: attendance-data
-      mountPath: /opt/render/project/src/backend
+      mountPath: /var/data # dedicated path OUTSIDE the source tree (won't hide code)
       sizeGB: 1
 
-  # Frontend Static Site
+  # ── Frontend (Vite static site) ─────────────────────────────────────────────
   - type: web
     name: mrelectric-attendance
     runtime: static
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
+      # Baked into the build by Vite. Must point at the backend's /api base.
+      # Update if the API is assigned a different URL.
       - key: VITE_API_URL
         value: https://mrelectric-attendance-api.onrender.com/api
+    routes:
+      # SPA fallback: serve index.html for client-side routes / refreshes
+      - type: rewrite
+        source: /*
+        destination: /index.html

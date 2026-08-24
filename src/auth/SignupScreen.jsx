@@ -90,7 +90,7 @@ export default function SignupScreen({ onToggle }) {
               name="email"
               type="email"
               className="form-input font-mono"
-              placeholder="arjun@mrelectric.com"
+              placeholder="you@mrelectric.com"
               value={form.email}
               onChange={handleChange}
               required

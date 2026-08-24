@@ -1,7 +1,14 @@
 import sqlite3 from 'sqlite3';
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
-const DB_PATH = './database.sqlite';
+// In production, DB_PATH points to a file on Render's persistent disk
+// (e.g. /var/data/database.sqlite). Locally it falls back to a project file.
+const DB_PATH = process.env.DB_PATH || './database.sqlite';
+
+// Ensure the parent directory exists so SQLite can create/open the file.
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) console.error('DB open error:', err);
@@ -93,29 +100,10 @@ db.serialize(() => {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
 
-  // Seed default users if empty
-  db.get(`SELECT COUNT(*) as count FROM users`, (err, row) => {
-    if (err) {
-      console.error('Error checking users count:', err);
-      return;
-    }
-    if (!row || row.count === 0) {
-      const users = [
-        ['emp-001', 'mrelectricalworks02@gmail.com', null, 'Mr. Electrical Admin', 'admin', 'Management', '👑', 'dev-admin', 1],
-        ['emp-002', 'arjun@mrelectric.com', null, 'Arjun Mehta', 'user', 'Electrical', '👷', 'dev-a1b2', 1],
-        ['emp-003', 'priya@mrelectric.com', null, 'Priya Sharma', 'user', 'Electrical', '👩‍🔧', 'dev-c3d4', 1],
-        ['emp-004', 'rahul@mrelectric.com', null, 'Rahul Singh', 'user', 'Plumbing', '🧑‍🔧', 'dev-e5f6', 1],
-        ['emp-005', 'deepa@mrelectric.com', null, 'Deepa Nair', 'user', 'Electrical', '👩‍💼', 'dev-g7h8', 1],
-        ['emp-006', 'vikram@mrelectric.com', null, 'Vikram Joshi', 'user', 'HVAC', '👨‍🔬', 'dev-i9j0', 1],
-      ];
-      const stmt = db.prepare(
-        `INSERT INTO users (id, email, password_hash, name, role, department, avatar, device_id, is_approved) VALUES (?,?,?,?,?,?,?,?,?)`
-      );
-      users.forEach((u) => stmt.run(u));
-      stmt.finalize();
-      console.log('Seeded initial users including Admin (mrelectricalworks02@gmail.com)');
-    }
-  });
+  // No user seeding (clean production database).
+  // The admin self-registers via POST /api/auth/signup using the ADMIN_EMAIL
+  // address — that signup is automatically granted the 'admin' role and approved.
+  // Everyone else registers through the app and is approved by the admin.
 
   // Seed default active QR token if empty
   db.get(`SELECT COUNT(*) as count FROM qr_tokens WHERE is_active = 1`, (err, row) => {
@@ -124,7 +112,7 @@ db.serialize(() => {
       const initialToken = `tok_${randomUUID().replace(/-/g, '').slice(0, 20)}`;
       db.run(
         `INSERT INTO qr_tokens (id, token, location_id, location_name, generated_by, is_active) VALUES (?, ?, ?, ?, ?, 1)`,
-        [randomUUID(), initialToken, 'loc-001', 'Main HQ & Warehouse', 'emp-001']
+        [randomUUID(), initialToken, 'loc-001', 'Main HQ & Warehouse', 'system']
       );
       console.log('Seeded initial active QR token:', initialToken);
     }

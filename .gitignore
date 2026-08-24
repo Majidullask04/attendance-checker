@@ -12,6 +12,21 @@ dist
 dist-ssr
 *.local
 
+# Environment files (never commit secrets or per-machine config)
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# SQLite database + WAL/SHM sidecar files (runtime data, never commit)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+database.sqlite*
+backend/database.sqlite*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
