@@ -9,7 +9,7 @@ const router = Router();
 async function getTodayRecords(userId) {
   return db.allAsync(
     `SELECT * FROM attendance_records 
-     WHERE user_id = ? AND date(recorded_at) = date('now') 
+     WHERE user_id = $1 AND recorded_at::date = NOW()::date 
      ORDER BY recorded_at ASC`,
     [userId]
   );
@@ -62,7 +62,7 @@ router.post('/check-in', async (req, res) => {
   try {
     // 2. Validate token exists and is currently active
     const tokenRow = await db.getAsync(
-      `SELECT * FROM qr_tokens WHERE token = ? AND is_active = 1`,
+      `SELECT * FROM qr_tokens WHERE token = $1 AND is_active = 1`,
       [tokenString]
     );
     if (!tokenRow) {
@@ -73,7 +73,7 @@ router.post('/check-in', async (req, res) => {
 
     // 3. Anti-Replay: Check token not already consumed by this user for check-in
     const used = await db.getAsync(
-      `SELECT * FROM used_tokens WHERE token = ? AND user_id = ? AND action_type = 'check_in'`,
+      `SELECT * FROM used_tokens WHERE token = $1 AND user_id = $2 AND action_type = 'check_in'`,
       [tokenString, userId]
     );
     if (used) {
@@ -100,7 +100,7 @@ router.post('/check-in', async (req, res) => {
     await db.runAsync(
       `INSERT INTO attendance_records 
        (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         recordId,
         userId,
@@ -122,11 +122,11 @@ router.post('/check-in', async (req, res) => {
 
     // 6. Mark token consumed for check-in
     await db.runAsync(
-      `INSERT INTO used_tokens (token, user_id, action_type) VALUES (?,?, 'check_in')`,
+      `INSERT INTO used_tokens (token, user_id, action_type) VALUES ($1,$2, 'check_in')`,
       [tokenString, userId]
     );
 
-    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = ?`, [recordId]);
+    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = $1`, [recordId]);
     res.json({ success: true, record });
   } catch (err) {
     console.error('Check-in error:', err);
@@ -149,7 +149,7 @@ router.post('/check-out', async (req, res) => {
   try {
     // 2. Validate token is live & active
     const tokenRow = await db.getAsync(
-      `SELECT * FROM qr_tokens WHERE token = ? AND is_active = 1`,
+      `SELECT * FROM qr_tokens WHERE token = $1 AND is_active = 1`,
       [tokenString]
     );
     if (!tokenRow) {
@@ -175,7 +175,7 @@ router.post('/check-out', async (req, res) => {
     await db.runAsync(
       `INSERT INTO attendance_records 
        (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         recordId,
         userId,
@@ -197,11 +197,11 @@ router.post('/check-out', async (req, res) => {
 
     // 5. Mark token consumed for check-out
     await db.runAsync(
-      `INSERT INTO used_tokens (token, user_id, action_type) VALUES (?,?, 'check_out')`,
+      `INSERT INTO used_tokens (token, user_id, action_type) VALUES ($1,$2, 'check_out')`,
       [tokenString, userId]
     );
 
-    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = ?`, [recordId]);
+    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = $1`, [recordId]);
     res.json({ success: true, record });
   } catch (err) {
     console.error('Check-out error:', err);
@@ -250,7 +250,7 @@ router.post('/sync-batch', async (req, res) => {
     try {
       // Check if token was active at some point (even if now deactivated)
       const tokenRow = await db.getAsync(
-        `SELECT * FROM qr_tokens WHERE token = ?`,
+        `SELECT * FROM qr_tokens WHERE token = $1`,
         [tokenString]
       );
 
@@ -265,7 +265,7 @@ router.post('/sync-batch', async (req, res) => {
       await db.runAsync(
         `INSERT INTO attendance_records 
          (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, is_offline_sync)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1)`,
         [
           recordId,
           userId,
@@ -302,7 +302,7 @@ router.get('/records', async (req, res) => {
 
   try {
     const rows = await db.allAsync(
-      `SELECT * FROM attendance_records WHERE user_id = ? ORDER BY recorded_at DESC LIMIT 200`,
+      `SELECT * FROM attendance_records WHERE user_id = $1 ORDER BY recorded_at DESC LIMIT 200`,
       [targetId]
     );
     res.json({ records: rows });
@@ -323,9 +323,9 @@ router.get('/team', requireAdmin, async (req, res) => {
         u.department, 
         u.avatar, 
         u.role,
-        (SELECT recorded_at FROM attendance_records WHERE user_id = u.id AND record_type = 'check_in' AND date(recorded_at) = date('now') ORDER BY recorded_at DESC LIMIT 1) as checkInTime,
-        (SELECT recorded_at FROM attendance_records WHERE user_id = u.id AND record_type = 'check_out' AND date(recorded_at) = date('now') ORDER BY recorded_at DESC LIMIT 1) as checkOutTime,
-        (SELECT COUNT(*) FROM attendance_records WHERE user_id = u.id AND status = 'flagged' AND date(recorded_at) = date('now')) as flaggedCount
+        (SELECT recorded_at FROM attendance_records WHERE user_id = u.id AND record_type = 'check_in' AND recorded_at::date = NOW()::date ORDER BY recorded_at DESC LIMIT 1) as checkInTime,
+        (SELECT recorded_at FROM attendance_records WHERE user_id = u.id AND record_type = 'check_out' AND recorded_at::date = NOW()::date ORDER BY recorded_at DESC LIMIT 1) as checkOutTime,
+        (SELECT COUNT(*) FROM attendance_records WHERE user_id = u.id AND status = 'flagged' AND recorded_at::date = NOW()::date) as flaggedCount
       FROM users u
       WHERE u.role != 'admin'
     `);
@@ -388,13 +388,13 @@ router.patch('/correct/:id', requireAdmin, async (req, res) => {
   }
 
   try {
-    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = ?`, [req.params.id]);
+    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = $1`, [req.params.id]);
     if (!record) return res.status(404).json({ error: 'Record not found.' });
 
     await db.runAsync(
       `UPDATE attendance_records 
-       SET status = 'corrected', correction_reason = ?, corrected_by = ?, corrected_at = ? 
-       WHERE id = ?`,
+       SET status = 'corrected', correction_reason = $1, corrected_by = $2, corrected_at = $3 
+       WHERE id = $4`,
       [reason.trim(), req.user.email, new Date().toISOString(), req.params.id]
     );
 

@@ -37,7 +37,7 @@ router.post('/signup', async (req, res) => {
 
   try {
     // Check if email already exists
-    const existing = await db.getAsync(`SELECT * FROM users WHERE email = ?`, [normalizedEmail]);
+    const existing = await db.getAsync(`SELECT * FROM users WHERE email = $1`, [normalizedEmail]);
     if (existing) {
       return res.status(409).json({ error: 'An account with this email already exists. Please sign in instead.' });
     }
@@ -50,7 +50,7 @@ router.post('/signup', async (req, res) => {
     const deviceId = `dev-${id}`;
 
     await db.runAsync(
-      `INSERT INTO users (id, email, password_hash, name, role, department, avatar, device_id, is_approved) VALUES (?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO users (id, email, password_hash, name, role, department, avatar, device_id, is_approved) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [id, normalizedEmail, passwordHash, name.trim(), role, department || 'Electrical', avatar, deviceId, isAdmin ? 1 : 0]
     );
 
@@ -86,7 +86,7 @@ router.post('/login', async (req, res) => {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    const user = await db.getAsync(`SELECT * FROM users WHERE email = ?`, [normalizedEmail]);
+    const user = await db.getAsync(`SELECT * FROM users WHERE email = $1`, [normalizedEmail]);
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
@@ -129,7 +129,7 @@ router.post('/login', async (req, res) => {
 // ── GET /api/auth/me ────────────────────────────────────────────────────────
 router.get('/me', verifyToken, async (req, res) => {
   try {
-    const user = await db.getAsync(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
+    const user = await db.getAsync(`SELECT * FROM users WHERE id = $1`, [req.user.id]);
     if (!user) return res.status(404).json({ error: 'User record not found.' });
 
     res.json({
@@ -166,7 +166,7 @@ router.get('/pending', verifyToken, requireAdmin, async (req, res) => {
 router.post('/approve/:id', verifyToken, requireAdmin, async (req, res) => {
   try {
     const result = await db.runAsync(
-      `UPDATE users SET is_approved = 1 WHERE id = ? AND role = 'user'`,
+      `UPDATE users SET is_approved = 1 WHERE id = $1 AND role = 'user'`,
       [req.params.id]
     );
     if (result.changes === 0) {
@@ -183,7 +183,7 @@ router.post('/approve/:id', verifyToken, requireAdmin, async (req, res) => {
 router.post('/reject/:id', verifyToken, requireAdmin, async (req, res) => {
   try {
     const result = await db.runAsync(
-      `DELETE FROM users WHERE id = ? AND role = 'user' AND is_approved = 0`,
+      `DELETE FROM users WHERE id = $1 AND role = 'user' AND is_approved = 0`,
       [req.params.id]
     );
     if (result.changes === 0) {

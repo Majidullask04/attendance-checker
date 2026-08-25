@@ -1,19 +1,19 @@
 services:
-  # ── Backend API (Node + SQLite on a persistent disk) ────────────────────────
+  # ── Backend API (Node + PostgreSQL) ────────────────────────
   - type: web
     name: mrelectric-attendance-api
     runtime: node
     rootDir: backend
-    plan: starter # NOTE: persistent disks require a paid instance (not free tier)
     buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
-      # SQLite lives on the persistent disk mounted at /var/data (see `disk` below).
-      - key: DB_PATH
-        value: /var/data/database.sqlite
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mrelectric-attendance-db
+          property: connectionString
       # Render generates a strong secret once and keeps it stable across deploys.
       - key: JWT_SECRET
         generateValue: true
@@ -25,10 +25,6 @@ services:
       # update this to the ACTUAL static-site URL and redeploy the API.
       - key: FRONTEND_URL
         value: https://mrelectric-attendance.onrender.com
-    disk:
-      name: attendance-data
-      mountPath: /var/data # dedicated path OUTSIDE the source tree (won't hide code)
-      sizeGB: 1
 
   # ── Frontend (Vite static site) ─────────────────────────────────────────────
   - type: web
@@ -46,3 +42,9 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+
+databases:
+  - name: mrelectric-attendance-db
+    databaseName: attendance
+    user: attendance_user
+    plan: free

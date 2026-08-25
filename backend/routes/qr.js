@@ -19,7 +19,7 @@ router.post('/regenerate', requireAdmin, async (req, res) => {
     const now = new Date().toISOString();
 
     await db.runAsync(
-      `INSERT INTO qr_tokens (id, token, location_id, location_name, generated_by, generated_at, is_active) VALUES (?,?,?,?,?,?,1)`,
+      `INSERT INTO qr_tokens (id, token, location_id, location_name, generated_by, generated_at, is_active) VALUES ($1,$2,$3,$4,$5,$6,1)`,
       [id, token, locationId, locationName, req.user.id, now]
     );
 
@@ -48,7 +48,7 @@ router.get('/current', async (req, res) => {
       const id = randomUUID();
       const now = new Date().toISOString();
       await db.runAsync(
-        `INSERT INTO qr_tokens (id, token, location_id, location_name, generated_by, generated_at, is_active) VALUES (?,?,?,?,?,?,1)`,
+        `INSERT INTO qr_tokens (id, token, location_id, location_name, generated_by, generated_at, is_active) VALUES ($1,$2,$3,$4,$5,$6,1)`,
         [id, token, 'loc-001', 'Main HQ & Warehouse', req.user.id || 'system', now]
       );
       row = { token, location_id: 'loc-001', location_name: 'Main HQ & Warehouse', generated_at: now };
