@@ -2196,3 +2196,110 @@
   color: var(--color-text-muted);
   font-size: 0.9rem;
 }
+
+/* ── Global Responsive Overrides ────────────────────────────── */
+@media (max-width: 768px) {
+  .app-layout {
+    flex-direction: column;
+  }
+  
+  .sidebar, .sidebar--collapsed {
+    width: 100%;
+    min-height: auto;
+    height: auto;
+    flex-direction: row;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    border-right: none;
+    border-top: 1px solid var(--color-border-subtle);
+    padding: 0;
+    background: var(--color-bg-secondary);
+  }
+  
+  .sidebar-header, .sidebar-user, .sidebar-online-badge, .sidebar-footer {
+    display: none;
+  }
+  
+  .sidebar-nav {
+    flex-direction: row;
+    justify-content: space-around;
+    padding: var(--space-xs);
+    margin: 0;
+    width: 100%;
+  }
+  
+  .sidebar-nav-item {
+    flex-direction: column;
+    padding: var(--space-xs);
+    gap: 2px;
+    flex: 1;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+  }
+  
+  .sidebar-nav-icon {
+    font-size: 1.3rem;
+  }
+  
+  .sidebar-nav-label {
+    font-size: 0.65rem !important;
+    display: block !important;
+    margin: 0;
+  }
+  
+  .sidebar-nav-item.active::before {
+    top: auto;
+    bottom: 0;
+    left: 20%;
+    right: 20%;
+    height: 3px;
+    width: auto;
+  }
+  
+  .app-main {
+    padding-bottom: 70px; /* Space for the bottom nav bar */
+  }
+  
+  .app-header {
+    padding: 0 var(--space-md);
+  }
+  
+  .header-clock, .header-user-info-text {
+    display: none;
+  }
+  
+  .header-user {
+    gap: 0;
+  }
+  
+  .app-content {
+    padding: var(--space-md);
+  }
+  
+  .screen-header {
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+  
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .checkin-layout {
+    grid-template-columns: 1fr;
+  }
+  
+  .team-quick-card {
+    flex-wrap: wrap;
+  }
+  
+  .team-quick-info {
+    min-width: 150px;
+  }
+}
