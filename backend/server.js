@@ -62,6 +62,8 @@ app.use(
       if (!origin) return callback(null, true);
       const normalized = origin.replace(/\/+$/, '');
       if (allowedOrigins.includes(normalized)) return callback(null, true);
+      // Allow any Vercel preview/production domain
+      if (origin && origin.match(/^https:\/\/.*\.vercel\.app$/)) return callback(null, true);
       return callback(new Error(`CORS blocked: origin ${origin} is not in the allowed list`));
     },
     credentials: true,
