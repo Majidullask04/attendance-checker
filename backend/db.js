@@ -3,7 +3,8 @@ const { Pool } = pkg;
 import { randomUUID } from 'crypto';
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }, // Fixes the SSL warning
 });
 
 pool.on('error', (err) => {
@@ -102,30 +103,36 @@ const initDb = async () => {
   }
 };
 
-initDb();
+// ── Sequential startup: tables → indexes → cleanup ──────────────────────────
+async function startup() {
+  await initDb(); // Wait for tables to exist first
 
-// ── Periodic Cleanup: used_tokens older than 7 days ─────────────────────────
-async function cleanupUsedTokens() {
+  // Now create indexes (tables are guaranteed to exist)
+  try {
+    await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_used_tokens_lookup ON used_tokens (token, user_id, action_type)`);
+    await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_records_user_date ON attendance_records (user_id, recorded_at)`);
+    console.log('Indexes created successfully');
+  } catch (err) {
+    console.error('Error creating indexes:', err.message);
+  }
+
+  // Now run cleanup (tables are guaranteed to exist)
   try {
     const result = await db.runAsync(`DELETE FROM used_tokens WHERE used_at < NOW() - INTERVAL '7 days'`);
     if (result.changes > 0) console.log(`Cleaned up ${result.changes} expired used_tokens rows`);
   } catch (err) {
-    console.error('used_tokens cleanup error:', err);
+    console.error('used_tokens cleanup error:', err.message);
   }
 }
-// Run cleanup on startup and every 24 hours
-cleanupUsedTokens();
-setInterval(cleanupUsedTokens, 24 * 60 * 60 * 1000);
 
-// ── Performance indexes ──────────────────────────────────────────────────────
-const initIndexes = async () => {
+startup();
+setInterval(async () => {
   try {
-    await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_used_tokens_lookup ON used_tokens (token, user_id, action_type)`);
-    await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_records_user_date ON attendance_records (user_id, recorded_at)`);
-  } catch(err) {
-    console.error('Error creating indexes', err);
+    const result = await db.runAsync(`DELETE FROM used_tokens WHERE used_at < NOW() - INTERVAL '7 days'`);
+    if (result.changes > 0) console.log(`Cleaned up ${result.changes} expired used_tokens rows`);
+  } catch (err) {
+    console.error('Periodic cleanup error:', err.message);
   }
-};
-initIndexes();
+}, 24 * 60 * 60 * 1000);
 
 export default db;
