@@ -36,7 +36,7 @@ jobs:
       - name: Build frontend
         run: npm run build
         env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://attendance-checker-p9qd.onrender.com/api' }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
   # ───────────────────────────────────────────────
   # 2. Backend Health Check
