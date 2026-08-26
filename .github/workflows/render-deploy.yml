@@ -1,15 +1,12 @@
 name: CI / CD — Render Auto-Deploy
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   # ───────────────────────────────────────────────
   # 1. Lint & Build Check (Frontend)
@@ -20,19 +17,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - name: Install frontend dependencies
         run: npm ci
-
       - name: Run Oxlint
         run: npm run lint
-
       - name: Build frontend
         run: npm run build
         env:
@@ -50,17 +43,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
-
       - name: Install backend dependencies
         run: npm ci
-
       # Optional: Add a simple syntax/startup dry-run if you have tests
       # - name: Run backend tests
       #   run: npm test
@@ -69,23 +59,24 @@ jobs:
   # 3. Deploy to Render (only on main branch push)
   # ───────────────────────────────────────────────
   deploy:
-    name: Trigger Render Deploy
+    name: Trigger Backend Deploy
     needs: [lint-and-build, backend-check]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy Frontend to Render
-        run: |
-          echo "Triggering frontend deploy…"
-          curl -s -X POST \
-            "${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK }}" \
-            -H "Content-Type: application/json" \
-            -o /dev/null -w "%{http_code}\n"
-
       - name: Deploy Backend to Render
         run: |
+          if [ -z "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" ]; then
+            echo "ERROR: RENDER_BACKEND_DEPLOY_HOOK secret is not set"
+            exit 1
+          fi
           echo "Triggering backend deploy…"
-          curl -s -X POST \
+          HTTP_CODE=$(curl -s -X POST \
             "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" \
             -H "Content-Type: application/json" \
-            -o /dev/null -w "%{http_code}\n"
+            -o /dev/null -w "%{http_code}\n")
+          echo "HTTP Status: $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "202" ] && [ "$HTTP_CODE" != "204" ]; then
+            echo "ERROR: Deploy failed with status $HTTP_CODE"
+            exit 1
+          fi
