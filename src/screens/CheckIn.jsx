@@ -24,6 +24,17 @@ export default function CheckIn({ store }) {
   const recordedTime = currentCheckIn?.recorded_at || currentCheckIn?.recordedAt;
   const timer = useTimer(recordedTime);
 
+  // Hooks must be called before any early returns
+  const handleScanSuccess = useCallback(async (scannedString) => {
+    setIsScannerOpen(false);
+
+    if (attendanceState === 'idle') {
+      await checkInWithQR(scannedString);
+    } else if (attendanceState === 'checked_in') {
+      await checkOutWithQR(scannedString);
+    }
+  }, [attendanceState, checkInWithQR, checkOutWithQR]);
+
   // If Admin: Render the full QR Management Portal
   if (isAdmin) {
     return (
@@ -43,15 +54,7 @@ export default function CheckIn({ store }) {
   }
 
   // If Employee: Render the Employee QR Scanner & Status Portal
-  const handleScanSuccess = useCallback(async (scannedString) => {
-    setIsScannerOpen(false);
-
-    if (attendanceState === 'idle') {
-      await checkInWithQR(scannedString);
-    } else if (attendanceState === 'checked_in') {
-      await checkOutWithQR(scannedString);
-    }
-  }, [attendanceState, checkInWithQR, checkOutWithQR]);
+  // (useCallback was moved up)
 
   return (
     <div className="screen fade-in">

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useAuth } from './AuthContext';
 import { api } from '../api/client';
 
 export default function SignupScreen({ onToggle }) {

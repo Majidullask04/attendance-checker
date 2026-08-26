@@ -144,7 +144,7 @@ router.get('/me', verifyToken, async (req, res) => {
         isApproved: user.is_approved,
       },
     });
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Failed to fetch user profile.' });
   }
 });

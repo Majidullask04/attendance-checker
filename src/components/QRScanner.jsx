@@ -3,7 +3,6 @@ import { Html5Qrcode } from 'html5-qrcode';
 
 export default function QRScanner({ onScan, onClose, currentQRToken }) {
   const [cameraError, setCameraError] = useState('');
-  const [isScanning, setIsScanning] = useState(false);
   const scannerRef = useRef(null);
   const hasScannedRef = useRef(false);
 
@@ -16,7 +15,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
     const qrCodeSuccessCallback = (decodedText) => {
       if (hasScannedRef.current) return;
       hasScannedRef.current = true;
-      setIsScanning(false);
+      hasScannedRef.current = true;
       
       // Stop scanner before calling onScan
       html5QrCode
@@ -31,7 +30,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
         });
     };
 
-    const qrCodeErrorCallback = (errorMessage) => {
+    const qrCodeErrorCallback = (_errorMessage) => {
       // Normal frame-by-frame non-detection errors are suppressed
     };
 
@@ -49,7 +48,6 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
         qrCodeErrorCallback
       )
       .then(() => {
-        setIsScanning(true);
         setCameraError('');
       })
       .catch((err) => {
@@ -59,7 +57,6 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
             ? err
             : 'Camera access denied or no camera device found on this system.'
         );
-        setIsScanning(false);
       });
 
     return () => {

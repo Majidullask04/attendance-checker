@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatTime, formatDate, formatDuration, confidenceLabel, groupRecordsByDay } from '../utils/formatters.js';
+import { formatTime, formatDuration, confidenceLabel, groupRecordsByDay } from '../utils/formatters.js';
 
 export default function MyRecords({ store }) {
   const { myRecords } = store;
