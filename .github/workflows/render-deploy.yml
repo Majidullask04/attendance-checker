@@ -74,4 +74,11 @@ jobs:
           HTTP_CODE=$(curl -s -X POST \
             "${{ secrets.RENDER_BACKEND_DEPLOY_HOOK }}" \
             -H "Content-Type: application/json" \
-            -o /dev/null -w "%{http_code}\n"
+            -o /dev/null -w "%{http_code}\n")
+
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "Deploy triggered successfully (HTTP $HTTP_CODE)"
+          else
+            echo "Deploy trigger failed (HTTP $HTTP_CODE)"
+            exit 1
+          fi
