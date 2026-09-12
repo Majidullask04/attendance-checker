@@ -2,9 +2,11 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import { randomUUID } from 'crypto';
 
+const useDatabaseSsl = process.env.DATABASE_SSL === 'true';
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // Fixes the SSL warning
+  ssl: useDatabaseSsl ? { rejectUnauthorized: false } : false,
 });
 
 pool.on('error', (err) => {
@@ -70,7 +72,7 @@ const initDb = async () => {
       user_id TEXT NOT NULL,
       location_id TEXT NOT NULL,
       location_name TEXT,
-      record_type TEXT CHECK(record_type IN ('check_in','check_out','break_start','break_end')) NOT NULL,
+      record_type TEXT CHECK(record_type IN ('check_in','check_out','break_start','break_end','ot_start','ot_end')) NOT NULL,
       recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       device_timestamp TIMESTAMP,
       latitude REAL,
@@ -87,6 +89,30 @@ const initDb = async () => {
       is_offline_sync INTEGER DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
+
+    // Auto-migrate record_type check constraint for existing PostgreSQL databases
+    try {
+      const constraints = await db.allAsync(`
+        SELECT conname 
+        FROM pg_constraint 
+        WHERE conrelid = 'attendance_records'::regclass 
+          AND contype = 'c'
+      `);
+      for (const c of (constraints || [])) {
+        if (c.conname.includes('record_type')) {
+          await db.runAsync(`ALTER TABLE attendance_records DROP CONSTRAINT IF EXISTS "${c.conname}"`);
+        }
+      }
+      await db.runAsync(`
+        ALTER TABLE attendance_records 
+        ADD CONSTRAINT attendance_records_record_type_check 
+        CHECK (record_type IN ('check_in','check_out','break_start','break_end','ot_start','ot_end'))
+      `);
+      console.log('Auto-migrated attendance_records record_type check constraint (includes OT)');
+    } catch (migErr) {
+      // Non-fatal if table doesn't exist yet or already has new constraint
+      console.log('Record type check constraint check:', migErr.message);
+    }
 
     // Seed default active QR token if empty
     const countRow = await db.getAsync(`SELECT COUNT(*) as count FROM qr_tokens WHERE is_active = 1`);

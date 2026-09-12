@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { POLICY, getZonedNow } from '../config/policy.js';
 
 const LOCATIONS = [
   { id: 'loc-001', name: 'Main HQ & Warehouse', lat: 28.6139, lng: 77.2090, radius: 150, wifi_ssid: 'MrElectric-HQ' },
@@ -11,8 +12,9 @@ const LOCATIONS = [
 const VALID_TRANSITIONS = {
   idle: ['checking_in'],
   checking_in: ['checked_in', 'idle'],
-  checked_in: ['on_break', 'checking_out'],
+  checked_in: ['on_break', 'checking_out', 'ot_active'],
   on_break: ['checked_in'],
+  ot_active: ['checked_in', 'idle', 'checking_out'],
   checking_out: ['idle'],
 };
 
@@ -31,11 +33,13 @@ export function useAttendanceStore() {
   const [activeScreen, setActiveScreen] = useState('dashboard');
   const [toasts, setToasts] = useState([]);
   const [currentCheckIn, setCurrentCheckIn] = useState(null);
+  const [breakStartTime, setBreakStartTime] = useState(null);
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isLoading, setIsLoading] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
   const [offlineQueue, setOfflineQueue] = useState(api.getOfflineQueue());
   const [isSyncing, setIsSyncing] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => getZonedNow().dateString);
 
   // Online / offline listeners
   useEffect(() => {
@@ -55,7 +59,14 @@ export function useAttendanceStore() {
     };
   }, []);
 
-  const addToast = useCallback((message, type = 'info', duration = 4000) => {
+  // Request browser notification permission once if supported
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  const addToast = useCallback((message, type = 'info', duration = 5000) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
     setToasts((prev) => [...prev, { id, message, type }]);
     setTimeout(() => {
@@ -68,30 +79,54 @@ export function useAttendanceStore() {
   }, []);
 
   // ── Load Data from API ────────────────────────────────────────────────────
-  const loadRecords = useCallback(async () => {
+  const loadRecords = useCallback(async (date = null) => {
     if (!authUser) return;
     try {
-      const data = await api.getRecords();
+      const data = await api.getRecords(null, date);
       const recs = data.records || [];
       setRecords(recs);
 
-      // Check if user is currently checked in today
-      const today = new Date().toDateString();
-      const todayRecs = recs.filter((r) => new Date(r.recorded_at || r.recordedAt).toDateString() === today);
-      const lastIn = [...todayRecs].reverse().find((r) => (r.record_type === 'check_in' || r.recordType === 'check_in'));
-      const lastOut = [...todayRecs].reverse().find((r) => (r.record_type === 'check_out' || r.recordType === 'check_out'));
+      // Determine today's state in IST
+      const todayDateStr = getZonedNow().dateString;
+      const todayRecs = recs.filter((r) => {
+        const d = r.recorded_at || r.recordedAt;
+        if (!d) return false;
+        return new Date(d).toISOString().slice(0, 10) === todayDateStr ||
+               new Date(d).toLocaleDateString('en-CA', { timeZone: POLICY.TIMEZONE }) === todayDateStr;
+      });
 
-      if (lastIn && (!lastOut || new Date(lastOut.recorded_at || lastOut.recordedAt) < new Date(lastIn.recorded_at || lastIn.recordedAt))) {
+      const lastIn = [...todayRecs].reverse().find((r) => r.record_type === 'check_in' || r.recordType === 'check_in');
+      const lastOut = [...todayRecs].reverse().find((r) => r.record_type === 'check_out' || r.recordType === 'check_out');
+      const lastBreakStart = [...todayRecs].reverse().find((r) => r.record_type === 'break_start' || r.recordType === 'break_start');
+      const lastBreakEnd = [...todayRecs].reverse().find((r) => r.record_type === 'break_end' || r.recordType === 'break_end');
+      const lastOtStart = [...todayRecs].reverse().find((r) => r.record_type === 'ot_start' || r.recordType === 'ot_start');
+      const lastOtEnd = [...todayRecs].reverse().find((r) => r.record_type === 'ot_end' || r.recordType === 'ot_end');
+
+      const isBreakActive = lastBreakStart && (!lastBreakEnd || new Date(lastBreakEnd.recorded_at) < new Date(lastBreakStart.recorded_at));
+      const isOtActive = lastOtStart && (!lastOtEnd || new Date(lastOtEnd.recorded_at) < new Date(lastOtStart.recorded_at));
+      const isShiftActive = lastIn && (!lastOut || new Date(lastOut.recorded_at) < new Date(lastIn.recorded_at));
+
+      if (isBreakActive) {
+        setAttendanceState('on_break');
+        setBreakStartTime(lastBreakStart.recorded_at || lastBreakStart.recordedAt);
         setCurrentCheckIn(lastIn);
+      } else if (isOtActive) {
+        setAttendanceState('ot_active');
+        setCurrentCheckIn(lastIn);
+        setBreakStartTime(null);
+      } else if (isShiftActive) {
         setAttendanceState('checked_in');
+        setCurrentCheckIn(lastIn);
+        setBreakStartTime(null);
       } else {
-        setCurrentCheckIn(null);
         setAttendanceState('idle');
+        setCurrentCheckIn(null);
+        setBreakStartTime(null);
       }
     } catch (err) {
       console.error('Error loading records:', err);
     }
-  }, [authUser?.id]);
+  }, [authUser]);
 
   const loadCurrentQR = useCallback(async () => {
     try {
@@ -108,15 +143,15 @@ export function useAttendanceStore() {
     }
   }, []);
 
-  const loadTeamData = useCallback(async () => {
+  const loadTeamData = useCallback(async (date = selectedDate) => {
     if (authUser?.role !== 'admin') return;
     try {
-      const data = await api.getTeam();
+      const data = await api.getTeam(date);
       setTeamSummary(data.team || []);
     } catch (err) {
       console.error('Error loading team data:', err);
     }
-  }, [authUser?.role]);
+  }, [authUser?.role, selectedDate]);
 
   const loadAuditData = useCallback(async () => {
     if (authUser?.role !== 'admin') return;
@@ -159,25 +194,53 @@ export function useAttendanceStore() {
         loadAuditData();
       }
 
-      // Auto-sync offline queue if any
       const queue = api.getOfflineQueue();
       if (queue.length > 0 && navigator.onLine) {
         syncOfflineQueue();
       }
     }
-  }, [authUser?.id, authUser?.role, loadRecords, loadCurrentQR, loadTeamData, loadAuditData, syncOfflineQueue]);
+  }, [authUser, loadRecords, loadCurrentQR, loadTeamData, loadAuditData, syncOfflineQueue]);
 
   // ── Admin Polling: live refresh every 10 seconds ──────────────────────────
   useEffect(() => {
     if (!authUser || authUser.role !== 'admin') return;
     const intervalId = setInterval(() => {
-      loadTeamData();
+      loadTeamData(selectedDate);
       loadAuditData();
     }, 10000);
     return () => clearInterval(intervalId);
-  }, [authUser?.role, loadTeamData, loadAuditData]);
+  }, [authUser, selectedDate, loadTeamData, loadAuditData]);
 
-  // ── QR Actions ────────────────────────────────────────────────────────────
+  // ── 1:50 PM Break Notification Checker ────────────────────────────────────
+  useEffect(() => {
+    if (!authUser || attendanceState !== 'checked_in') return;
+
+    const check150Notification = () => {
+      const zoned = getZonedNow(POLICY.TIMEZONE);
+      if (zoned.timeString === POLICY.BREAK_NOTIFY) {
+        const storageKey = `break_notified_${zoned.dateString}`;
+        if (!sessionStorage.getItem(storageKey)) {
+          sessionStorage.setItem(storageKey, 'true');
+          addToast('☕ It is 1:50 PM! Time for your 30-min break. Tap "Take Break" to begin the countdown.', 'warning', 10000);
+
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+            try {
+              new Notification('Mr. Electricals — Afternoon Break', {
+                body: "It's 1:50 PM! Time for your 30-minute scheduled break. Tap to start your break timer.",
+              });
+            } catch (e) {
+              console.warn('Browser notification error:', e);
+            }
+          }
+        }
+      }
+    };
+
+    const timer = setInterval(check150Notification, 15000);
+    return () => clearInterval(timer);
+  }, [authUser, attendanceState, addToast]);
+
+  // ── QR Token Generation ───────────────────────────────────────────────────
   const generateNewQRToken = useCallback(
     async (location = activeLocation) => {
       setQrLoading(true);
@@ -223,11 +286,8 @@ export function useAttendanceStore() {
 
         const res = await api.checkIn({
           qrPayload: payload,
-          // eslint-disable-next-line sonarjs/pseudo-random
           latitude: activeLocation.lat + (Math.random() - 0.5) * 0.0004,
-          // eslint-disable-next-line sonarjs/pseudo-random
           longitude: activeLocation.lng + (Math.random() - 0.5) * 0.0004,
-          // eslint-disable-next-line sonarjs/pseudo-random
           accuracyMeters: Math.floor(Math.random() * 8) + 4,
           deviceId: authUser?.deviceId || 'web-client',
           deviceTimestamp: new Date().toISOString(),
@@ -252,7 +312,8 @@ export function useAttendanceStore() {
 
         setCurrentCheckIn(res.record);
         setAttendanceState('checked_in');
-        addToast('✓ Checked in successfully via Station QR!', 'success');
+        const timingMsg = res.timing === 'late' ? '⚠ Checked In (Late after 9:00 AM)' : '✓ Checked in on-time (Present)!';
+        addToast(timingMsg, res.timing === 'late' ? 'warning' : 'success');
         await loadRecords();
         if (authUser?.role === 'admin') {
           loadTeamData();
@@ -290,11 +351,8 @@ export function useAttendanceStore() {
 
         const res = await api.checkOut({
           qrPayload: payload,
-          // eslint-disable-next-line sonarjs/pseudo-random
           latitude: activeLocation.lat + (Math.random() - 0.5) * 0.0004,
-          // eslint-disable-next-line sonarjs/pseudo-random
           longitude: activeLocation.lng + (Math.random() - 0.5) * 0.0004,
-          // eslint-disable-next-line sonarjs/pseudo-random
           accuracyMeters: Math.floor(Math.random() * 8) + 4,
           deviceId: authUser?.deviceId || 'web-client',
           deviceTimestamp: new Date().toISOString(),
@@ -329,17 +387,123 @@ export function useAttendanceStore() {
   );
 
   // ── Breaks ────────────────────────────────────────────────────────────────
-  const startBreak = useCallback(() => {
-    if (!canTransition(attendanceState, 'on_break')) return;
-    setAttendanceState('on_break');
-    addToast('Break started. Shift timer paused.', 'info');
-  }, [attendanceState, addToast]);
+  const startBreak = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await api.startBreak();
+      setAttendanceState('on_break');
+      setBreakStartTime(res.record?.recorded_at || new Date().toISOString());
+      addToast('☕ Break started! Countdown running (30-40 min).', 'warning');
+      await loadRecords();
+    } catch (err) {
+      addToast(err.message || 'Failed to start break', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [addToast, loadRecords]);
 
-  const endBreak = useCallback(() => {
-    if (!canTransition(attendanceState, 'checked_in')) return;
-    setAttendanceState('checked_in');
-    addToast('Welcome back! Break ended.', 'success');
-  }, [attendanceState, addToast]);
+  const endBreak = useCallback(
+    async (scannedData) => {
+      setIsLoading(true);
+      try {
+        let payload;
+        try {
+          payload = typeof scannedData === 'string' ? JSON.parse(scannedData) : scannedData;
+        } catch {
+          payload = { token: scannedData };
+        }
+
+        const res = await api.endBreak({ qrPayload: payload });
+        setAttendanceState('checked_in');
+        setBreakStartTime(null);
+        addToast('✓ Break ended via QR Scan! Welcome back to shift.', 'success');
+        await loadRecords();
+        if (authUser?.role === 'admin') {
+          loadTeamData();
+        }
+        return { success: true, record: res.record };
+      } catch (err) {
+        addToast(`❌ Resume Failed: ${err.message}`, 'error');
+        return { success: false, error: err.message };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [authUser?.role, addToast, loadRecords, loadTeamData]
+  );
+
+  // ── Overtime (OT) ─────────────────────────────────────────────────────────
+  const startOT = useCallback(
+    async (scannedData) => {
+      setIsLoading(true);
+      try {
+        let payload;
+        try {
+          payload = typeof scannedData === 'string' ? JSON.parse(scannedData) : scannedData;
+        } catch {
+          payload = { token: scannedData };
+        }
+
+        const res = await api.startOT({ qrPayload: payload });
+        setAttendanceState('ot_active');
+        addToast('⏫ Overtime started! Extra work timer is running.', 'success');
+        await loadRecords();
+        if (authUser?.role === 'admin') {
+          loadTeamData();
+        }
+        return { success: true, record: res.record };
+      } catch (err) {
+        addToast(`❌ OT Start Failed: ${err.message}`, 'error');
+        return { success: false, error: err.message };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [authUser?.role, addToast, loadRecords, loadTeamData]
+  );
+
+  const endOT = useCallback(
+    async (scannedData) => {
+      setIsLoading(true);
+      try {
+        let payload;
+        try {
+          payload = typeof scannedData === 'string' ? JSON.parse(scannedData) : scannedData;
+        } catch {
+          payload = { token: scannedData };
+        }
+
+        const res = await api.endOT({ qrPayload: payload });
+        setAttendanceState('checked_in');
+        addToast('⏹ Overtime ended. Great work!', 'info');
+        await loadRecords();
+        if (authUser?.role === 'admin') {
+          loadTeamData();
+        }
+        return { success: true, record: res.record };
+      } catch (err) {
+        addToast(`❌ OT End Failed: ${err.message}`, 'error');
+        return { success: false, error: err.message };
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [authUser?.role, addToast, loadRecords, loadTeamData]
+  );
+
+  // ── PDF Export ────────────────────────────────────────────────────────────
+  const downloadReportPDF = useCallback(
+    async (date = selectedDate) => {
+      try {
+        addToast('Generating PDF attendance report…', 'info');
+        await api.downloadReportPDF(date);
+        addToast('✓ PDF attendance report downloaded successfully!', 'success');
+      } catch (err) {
+        addToast(err.message || 'Failed to download report', 'error');
+      }
+    },
+    [selectedDate, addToast]
+  );
 
   // ── Record Correction (Admin Only) ────────────────────────────────────────
   const correctRecord = useCallback(
@@ -365,9 +529,12 @@ export function useAttendanceStore() {
   );
 
   const stats = {
-    presentToday: teamSummary.filter((e) => e.status === 'present').length,
+    presentToday: teamSummary.filter((e) => ['present', 'checked_out'].includes(e.status)).length,
+    lateToday: teamSummary.filter((e) => e.isLate || e.status === 'late').length,
+    halfDayToday: teamSummary.filter((e) => e.status === 'half_day').length,
     absentToday: teamSummary.filter((e) => e.status === 'absent').length,
     checkedOut: teamSummary.filter((e) => e.status === 'checked_out').length,
+    otToday: teamSummary.filter((e) => e.status === 'overtime' || e.otHours > 0).length,
     flaggedRecords: auditRecords.filter((r) => r.status === 'flagged').length,
     totalEmployees: teamSummary.length || 6,
   };
@@ -394,12 +561,18 @@ export function useAttendanceStore() {
     addToast,
     dismissToast,
     currentCheckIn,
+    breakStartTime,
     activeLocation,
     setActiveLocation,
+    selectedDate,
+    setSelectedDate,
     checkInWithQR,
     checkOutWithQR,
     startBreak,
     endBreak,
+    startOT,
+    endOT,
+    downloadReportPDF,
     correctRecord,
     loadRecords,
     loadTeamData,
@@ -411,3 +584,5 @@ export function useAttendanceStore() {
     canTransition,
   };
 }
+
+export default useAttendanceStore;

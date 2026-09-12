@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: attendance-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: attendance_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d attendance_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: attendance-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:postgrespassword@postgres:5432/attendance_db
+      DATABASE_SSL: "false"
+      APP_TIMEZONE: Asia/Kolkata
+      CHECK_IN_START: "06:00"
+      CHECK_IN_END: "09:00"
+      BREAK_NOTIFY: "13:50"
+      WORK_END: "17:00"
+      JWT_SECRET: supersecret_jwt_key_attendance_production_12345
+      FRONTEND_URL: "http://localhost:3001,http://localhost:5173,http://localhost:5174,http://localhost:5175"
+
+volumes:
+  pgdata:

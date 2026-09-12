@@ -98,6 +98,23 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, timestamp: new Date().toISOString(), service: 'MrElectric Attendance API' });
 });
 
+// Serve frontend dist if present (production / docker build)
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.resolve(__dirname, '../dist');
+
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
   console.log(`⚡ MrElectric Attendance API running on http://localhost:${PORT}`);
   console.log(`   CORS allowed: ${allowedOrigins.join(', ') || '(none set — set FRONTEND_URL)'}`);

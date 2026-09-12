@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { formatTime, formatDuration, confidenceLabel, groupRecordsByDay } from '../utils/formatters.js';
 
+const TYPE_META = {
+  check_in: { badge: 'badge-in', label: '▲ IN' },
+  check_out: { badge: 'badge-out', label: '▼ OUT' },
+  break_start: { badge: 'badge-warning', label: '☕ BREAK' },
+  break_end: { badge: 'badge-in', label: '▶ RESUME' },
+  ot_start: { badge: 'badge-ot', label: '⏫ OT START' },
+  ot_end: { badge: 'badge-out', label: '⏹ OT END' },
+};
+
 export default function MyRecords({ store }) {
   const { myRecords } = store;
   const [filter, setFilter] = useState('all'); // all | flagged | offline
@@ -104,10 +113,10 @@ export default function MyRecords({ store }) {
                     >
                       <div
                         className={`record-type-badge ${
-                          type === 'check_in' ? 'badge-in' : 'badge-out'
+                          TYPE_META[type]?.badge || (type === 'check_in' ? 'badge-in' : 'badge-out')
                         }`}
                       >
-                        {type === 'check_in' ? '▲ IN' : '▼ OUT'}
+                        {TYPE_META[type]?.label || (type === 'check_in' ? '▲ IN' : '▼ OUT')}
                       </div>
 
                       <div className="record-time font-mono">

@@ -1,6 +1,7 @@
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useTimer } from '../hooks/useTimer.js';
 import { formatTime, formatDuration, getWeekDates } from '../utils/formatters.js';
+import DayTimeline from '../components/DayTimeline.jsx';
 
 function StatCard({ label, value, sub, color, icon }) {
   return (
@@ -113,6 +114,15 @@ function ActivityFeed({ records, isUserOnly }) {
           const time = r.recorded_at || r.recordedAt;
           const score = r.confidence_score || r.confidenceScore || 90;
 
+          const TYPE_LABELS = {
+            check_in: '▲ Checked In',
+            check_out: '▼ Checked Out',
+            break_start: '☕ Break Started',
+            break_end: '▶ Break Ended',
+            ot_start: '⏫ OT Started',
+            ot_end: '⏹ OT Ended',
+          };
+
           return (
             <div
               key={r.id}
@@ -122,13 +132,19 @@ function ActivityFeed({ records, isUserOnly }) {
             >
               <div
                 className={`activity-dot activity-dot--${
-                  type === 'check_in' ? 'success' : 'info'
+                  type === 'check_in' || type === 'break_end'
+                    ? 'success'
+                    : type === 'break_start'
+                    ? 'warning'
+                    : type === 'ot_start' || type === 'ot_end'
+                    ? 'purple'
+                    : 'info'
                 }`}
               />
               <div className="activity-body">
                 <div className="activity-action">
                   <span className="activity-type">
-                    {type === 'check_in' ? '▲ Checked In' : '▼ Checked Out'}
+                    {TYPE_LABELS[type] || '• Event'}
                   </span>
                   {r.userName && (
                     <span className="activity-user-name">({r.userName})</span>
@@ -208,6 +224,8 @@ export default function Dashboard({ store }) {
           </div>
         )}
       </div>
+
+      <DayTimeline />
 
       {/* Stats Row */}
       {isAdmin ? (

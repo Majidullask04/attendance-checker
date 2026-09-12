@@ -1,41 +1,137 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useTimer } from '../hooks/useTimer.js';
 import { formatTime } from '../utils/formatters.js';
+import { POLICY, getZonedNow, timeToMinutes } from '../config/policy.js';
 import QRGenerator from '../components/QRGenerator.jsx';
 import QRScanner from '../components/QRScanner.jsx';
+import DayTimeline from '../components/DayTimeline.jsx';
+
+function BreakCountdown({ breakStartTime }) {
+  const [elapsed, setElapsed] = useState(() => {
+    if (!breakStartTime) return 0;
+    return Math.max(0, Math.floor((Date.now() - new Date(breakStartTime).getTime()) / 1000));
+  });
+
+  useEffect(() => {
+    if (!breakStartTime) return;
+    const interval = setInterval(() => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - new Date(breakStartTime).getTime()) / 1000)));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [breakStartTime]);
+
+  const TARGET_SECONDS = 30 * 60; // 30 minutes
+  const MAX_SECONDS = 40 * 60;    // 40 minutes
+
+  const remaining = Math.max(0, TARGET_SECONDS - elapsed);
+  const remMinutes = Math.floor(remaining / 60);
+  const remSeconds = remaining % 60;
+
+  const isExceededTarget = elapsed > TARGET_SECONDS;
+  const isExceededMax = elapsed > MAX_SECONDS;
+
+  return (
+    <div className="break-countdown-card">
+      <div className="break-countdown-header">
+        <span className="break-icon">☕</span>
+        <span className="break-title">Afternoon Break Countdown</span>
+      </div>
+
+      <div className="break-timer-display font-mono">
+        {!isExceededTarget ? (
+          <>
+            <span className="timer-large">
+              {String(remMinutes).padStart(2, '0')}:{String(remSeconds).padStart(2, '0')}
+            </span>
+            <span className="timer-sublabel">remaining of 30-min break</span>
+          </>
+        ) : (
+          <>
+            <span className="timer-large timer-large--warning">
+              +{Math.floor((elapsed - TARGET_SECONDS) / 60)}m {(elapsed - TARGET_SECONDS) % 60}s
+            </span>
+            <span className="timer-sublabel text-warning">Target exceeded (Grace limit 40 min)</span>
+          </>
+        )}
+      </div>
+
+      {isExceededMax && (
+        <div className="break-warning-banner">
+          ⚠️ <strong>Break exceeded 40 minutes!</strong> You must scan the Station QR code immediately, otherwise your attendance will be recorded as <strong>Half Day</strong>.
+        </div>
+      )}
+
+      <div className="break-info-note">
+        Requirement: Employee must scan the station QR to resume shift.
+      </div>
+    </div>
+  );
+}
 
 export default function CheckIn({ store }) {
   const { isAdmin } = useAuth();
   const {
     attendanceState,
     currentCheckIn,
+    breakStartTime,
     activeLocation,
     currentQRToken,
     checkInWithQR,
     checkOutWithQR,
     startBreak,
     endBreak,
+    startOT,
+    endOT,
     isOnline,
     isLoading,
   } = store;
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scannerMode, setScannerMode] = useState('auto'); // auto | break_end | ot_start | ot_end
+
   const recordedTime = currentCheckIn?.recorded_at || currentCheckIn?.recordedAt;
-  const timer = useTimer(recordedTime);
+  const shiftTimer = useTimer(recordedTime);
 
-  // Hooks must be called before any early returns
-  const handleScanSuccess = useCallback(async (scannedString) => {
-    setIsScannerOpen(false);
+  // Check current IST time to determine if post-5:00 PM (OT eligible)
+  const [isPost5PM, setIsPost5PM] = useState(() => {
+    const zoned = getZonedNow(POLICY.TIMEZONE);
+    return zoned.totalMinutes >= timeToMinutes(POLICY.WORK_END);
+  });
 
-    if (attendanceState === 'idle') {
-      await checkInWithQR(scannedString);
-    } else if (attendanceState === 'checked_in') {
-      await checkOutWithQR(scannedString);
-    }
-  }, [attendanceState, checkInWithQR, checkOutWithQR]);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const zoned = getZonedNow(POLICY.TIMEZONE);
+      setIsPost5PM(zoned.totalMinutes >= timeToMinutes(POLICY.WORK_END));
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
-  // If Admin: Render the full QR Management Portal
+  const openScanner = (mode = 'auto') => {
+    setScannerMode(mode);
+    setIsScannerOpen(true);
+  };
+
+  const handleScanSuccess = useCallback(
+    async (scannedString) => {
+      setIsScannerOpen(false);
+
+      if (scannerMode === 'break_end' || attendanceState === 'on_break') {
+        await endBreak(scannedString);
+      } else if (scannerMode === 'ot_start') {
+        await startOT(scannedString);
+      } else if (scannerMode === 'ot_end' || attendanceState === 'ot_active') {
+        await endOT(scannedString);
+      } else if (attendanceState === 'idle') {
+        await checkInWithQR(scannedString);
+      } else if (attendanceState === 'checked_in') {
+        await checkOutWithQR(scannedString);
+      }
+    },
+    [scannerMode, attendanceState, endBreak, startOT, endOT, checkInWithQR, checkOutWithQR]
+  );
+
+  // Admin View
   if (isAdmin) {
     return (
       <div className="screen fade-in">
@@ -43,29 +139,30 @@ export default function CheckIn({ store }) {
           <div>
             <h1 className="screen-title">QR Code Station Manager</h1>
             <p className="screen-sub">
-              Display this dynamic QR code at the work entrance for staff to check in and out.
+              Display this dynamic station QR code at the work entrance for staff to check in, resume breaks, and record OT.
             </p>
           </div>
         </div>
 
+        <DayTimeline />
         <QRGenerator store={store} />
       </div>
     );
   }
 
-  // If Employee: Render the Employee QR Scanner & Status Portal
-  // (useCallback was moved up)
-
+  // Employee View
   return (
     <div className="screen fade-in">
       <div className="screen-header">
         <div>
           <h1 className="screen-title">Shift Attendance & QR Scan</h1>
           <p className="screen-sub">
-            Scan the active QR code at your station or job site to record your shift.
+            Scan station QR codes for check-in (6-9 AM), break resumption (1:50 PM), and overtime after 5 PM.
           </p>
         </div>
       </div>
+
+      <DayTimeline />
 
       <div className="checkin-layout">
         {/* Main Status & Action Card */}
@@ -77,6 +174,8 @@ export default function CheckIn({ store }) {
                 ? 'success'
                 : attendanceState === 'on_break'
                 ? 'warning'
+                : attendanceState === 'ot_active'
+                ? 'purple'
                 : 'neutral'
             }`}
           >
@@ -87,29 +186,38 @@ export default function CheckIn({ store }) {
             <div className="checkin-status-inner">
               <div className="checkin-status-label">
                 {attendanceState === 'checked_in'
-                  ? 'Checked In (Active)'
+                  ? 'Checked In (Active Shift)'
                   : attendanceState === 'on_break'
-                  ? 'On Break'
+                  ? 'On Break (30–40 min)'
+                  : attendanceState === 'ot_active'
+                  ? 'Active Overtime (OT)'
                   : attendanceState === 'checking_in'
                   ? 'Verifying…'
                   : 'Ready to Check In'}
               </div>
               {recordedTime && (
                 <div className="checkin-status-time">
-                  Since {formatTime(recordedTime)}
+                  Shift started at {formatTime(recordedTime)}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Live Shift Timer */}
-          {attendanceState === 'checked_in' && (
+          {/* Shift Timer */}
+          {(attendanceState === 'checked_in' || attendanceState === 'ot_active') && (
             <div className="checkin-timer">
-              <div className="checkin-timer-label">Active Shift Duration</div>
+              <div className="checkin-timer-label">
+                {attendanceState === 'ot_active' ? 'Active Overtime Duration' : 'Total Shift Elapsed'}
+              </div>
               <div className="checkin-timer-value font-mono">
-                {timer.formatted}
+                {shiftTimer.formatted}
               </div>
             </div>
+          )}
+
+          {/* Break Countdown Display */}
+          {attendanceState === 'on_break' && (
+            <BreakCountdown breakStartTime={breakStartTime} />
           )}
 
           {/* Action Trigger Buttons */}
@@ -118,43 +226,73 @@ export default function CheckIn({ store }) {
               <button
                 id="btn-open-scanner"
                 className="btn-action btn-checkin"
-                onClick={() => setIsScannerOpen(true)}
+                onClick={() => openScanner('check_in')}
                 disabled={isLoading}
               >
                 <span className="btn-icon">📷</span>
-                <span>{isLoading ? 'Processing…' : 'Open Scanner to Check In'}</span>
+                <span>{isLoading ? 'Processing…' : 'Scan QR to Check In'}</span>
               </button>
             )}
 
             {attendanceState === 'checked_in' && (
               <>
-                <button
-                  id="btn-scan-checkout"
-                  className="btn-action btn-checkout"
-                  onClick={() => setIsScannerOpen(true)}
-                  disabled={isLoading}
-                >
-                  <span className="btn-icon">📷</span>
-                  <span>{isLoading ? 'Processing…' : 'Scan QR to Check Out'}</span>
-                </button>
+                <div className="btn-group-row">
+                  <button
+                    id="btn-start-break"
+                    className="btn-secondary flex-1"
+                    onClick={startBreak}
+                    disabled={isLoading}
+                  >
+                    ☕ Take Break (30-40m)
+                  </button>
 
-                <button
-                  id="btn-start-break"
-                  className="btn-secondary"
-                  onClick={startBreak}
-                >
-                  ☕ Take Break
-                </button>
+                  <button
+                    id="btn-scan-checkout"
+                    className="btn-action btn-checkout flex-1"
+                    onClick={() => openScanner('check_out')}
+                    disabled={isLoading}
+                  >
+                    <span className="btn-icon">📷</span>
+                    <span>{isPost5PM ? 'Full Day Check-Out' : 'Check Out'}</span>
+                  </button>
+                </div>
+
+                {/* If past 5:00 PM, show OT scan option */}
+                {isPost5PM && (
+                  <button
+                    id="btn-start-ot"
+                    className="btn-action btn-ot"
+                    onClick={() => openScanner('ot_start')}
+                    disabled={isLoading}
+                  >
+                    <span className="btn-icon">⏫</span>
+                    <span>Scan QR to Start Overtime (OT)</span>
+                  </button>
+                )}
               </>
             )}
 
             {attendanceState === 'on_break' && (
               <button
-                id="btn-end-break"
-                className="btn-action btn-endbreak"
-                onClick={endBreak}
+                id="btn-resume-break"
+                className="btn-action btn-checkin"
+                onClick={() => openScanner('break_end')}
+                disabled={isLoading}
               >
-                <span>Resume Shift</span>
+                <span className="btn-icon">📷</span>
+                <span>Scan Station QR to Resume Shift</span>
+              </button>
+            )}
+
+            {attendanceState === 'ot_active' && (
+              <button
+                id="btn-stop-ot"
+                className="btn-action btn-checkout"
+                onClick={() => openScanner('ot_end')}
+                disabled={isLoading}
+              >
+                <span className="btn-icon">⏹</span>
+                <span>Scan Station QR to Stop Overtime</span>
               </button>
             )}
           </div>
@@ -181,23 +319,31 @@ export default function CheckIn({ store }) {
           </div>
 
           <div className="info-card">
-            <div className="info-card-title">🔒 Server-Side Multi-Factor Verification</div>
+            <div className="info-card-title">⏰ Today's Shift Rules</div>
             <div className="info-card-items">
               <div className="info-card-row">
-                <span className="info-card-row-label">QR Dynamic Token</span>
-                <span className="info-card-row-val text-success">✓ Enforced</span>
+                <span className="info-card-row-label">Check-In Window</span>
+                <span className="info-card-row-val text-success">06:00 – 09:00 AM (On-time)</span>
               </div>
               <div className="info-card-row">
-                <span className="info-card-row-label">Anti-Replay Lock</span>
-                <span className="info-card-row-val text-success">✓ Enforced in SQLite</span>
+                <span className="info-card-row-label">Late Threshold</span>
+                <span className="info-card-row-val text-warning">After 09:00 AM (Late)</span>
               </div>
               <div className="info-card-row">
-                <span className="info-card-row-label">Device Signature</span>
-                <span className="info-card-row-val text-success">✓ Fingerprinted</span>
+                <span className="info-card-row-label">Afternoon Break</span>
+                <span className="info-card-row-val text-accent">01:50 PM (30–40 min max)</span>
               </div>
               <div className="info-card-row">
-                <span className="info-card-row-label">Audit Trail Log</span>
-                <span className="info-card-row-val text-success">✓ Immutable API</span>
+                <span className="info-card-row-label">Resume Requirement</span>
+                <span className="info-card-row-val text-warning">QR Scan (or Half Day)</span>
+              </div>
+              <div className="info-card-row">
+                <span className="info-card-row-label">Full Day Mark</span>
+                <span className="info-card-row-val text-success">05:00 PM (17:00 IST)</span>
+              </div>
+              <div className="info-card-row">
+                <span className="info-card-row-label">Overtime (OT)</span>
+                <span className="info-card-row-val text-purple">After 05:00 PM (OT QR Scan)</span>
               </div>
             </div>
           </div>
@@ -221,16 +367,7 @@ export default function CheckIn({ store }) {
                 <div className="info-card-row">
                   <span className="info-card-row-label">Confidence</span>
                   <span className="info-card-row-val font-mono text-success">
-                    {currentCheckIn.confidence_score || currentCheckIn.confidenceScore || 90}%
-                  </span>
-                </div>
-                <div className="info-card-row">
-                  <span className="info-card-row-label">Token Reference</span>
-                  <span
-                    className="info-card-row-val font-mono"
-                    title={currentCheckIn.qr_token || currentCheckIn.qrTokenId}
-                  >
-                    {(currentCheckIn.qr_token || currentCheckIn.qrTokenId || '').slice(0, 14)}…
+                    {currentCheckIn.confidence_score || currentCheckIn.confidenceScore || 95}%
                   </span>
                 </div>
               </div>

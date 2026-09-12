@@ -118,6 +118,7 @@ export const api = {
     }),
 
   // Attendance endpoints (with offline fallback)
+  getPolicy: () => request('/attendance/policy'),
   checkIn: (payload) =>
     offlineAwareRequest(
       '/attendance/check-in',
@@ -130,11 +131,67 @@ export const api = {
       { method: 'POST', body: JSON.stringify(payload) },
       { type: 'check_out', qrPayload: payload.qrPayload, timestamp: payload.deviceTimestamp, deviceId: payload.deviceId, latitude: payload.latitude, longitude: payload.longitude }
     ),
-  getRecords: (userId) => request(`/attendance/records${userId ? `?userId=${userId}` : ''}`),
-  getTeam: () => request('/attendance/team'),
+  startBreak: (payload = {}) =>
+    request('/attendance/break', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'start', ...payload }),
+    }),
+  endBreak: (payload) =>
+    request('/attendance/break', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'end', ...payload }),
+    }),
+  startOT: (payload) =>
+    request('/attendance/ot', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'start', ...payload }),
+    }),
+  endOT: (payload) =>
+    request('/attendance/ot', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'end', ...payload }),
+    }),
+  smartScan: (payload) =>
+    request('/attendance/scan', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getRecords: (userId, date) => {
+    const params = new URLSearchParams();
+    if (userId) params.append('userId', userId);
+    if (date) params.append('date', date);
+    const qs = params.toString();
+    return request(`/attendance/records${qs ? `?${qs}` : ''}`);
+  },
+  getTeam: (date) => request(`/attendance/team${date ? `?date=${date}` : ''}`),
+  getSummary: (date) => request(`/attendance/summary${date ? `?date=${date}` : ''}`),
   getAudit: () => request('/attendance/audit'),
   correctRecord: (id, reason) =>
     request(`/attendance/correct/${id}`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
+
+  downloadReportPDF: async (date) => {
+    const token = localStorage.getItem('attendance_token');
+    const url = `${API_BASE}/attendance/report/pdf${date ? `?date=${date}` : ''}`;
+    const res = await fetch(url, {
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to download PDF report');
+    }
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `attendance-report-${date || new Date().toISOString().slice(0, 10)}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
+    return true;
+  },
 
   // Offline sync
   syncOffline: syncOfflineQueue,
