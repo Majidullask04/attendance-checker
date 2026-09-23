@@ -2817,3 +2817,184 @@
   color: var(--color-text-muted);
 }
 
+/* ── Google Auth Account Picker Modal ───────────────────────── */
+.google-auth-modal {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-hover);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 440px;
+  padding: var(--space-xl);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 40px var(--color-accent-glow);
+  position: relative;
+  z-index: 1001;
+  animation: modalPopIn var(--duration-modal) var(--ease-drawer) forwards;
+}
+
+.google-auth-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.google-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.google-icon-lg {
+  flex-shrink: 0;
+}
+
+.google-modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.google-modal-sub {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+.google-accounts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: var(--space-lg);
+}
+
+.google-account-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: transform var(--duration-instant) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.google-account-item:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+}
+
+.google-account-item:active {
+  transform: scale(0.98);
+}
+
+.google-account-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: hsla(217, 91%, 60%, 0.15);
+  border: 1px solid hsla(217, 91%, 60%, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.google-account-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.google-account-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.google-account-email {
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.google-modal-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: var(--space-md) 0 8px;
+}
+
+.google-modal-divider::before,
+.google-modal-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.google-modal-divider span {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.google-add-account-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: 1px dashed var(--color-border-hover);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.google-add-account-btn:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-accent);
+}
+
+.google-custom-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.google-form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.google-modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+  font-size: 0.74rem;
+  color: var(--color-text-muted);
+}
+
+

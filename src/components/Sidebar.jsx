@@ -189,7 +189,7 @@ export default function Sidebar({
 
           {(!collapsed || isMobileOpen) && (
             <div className="sidebar-version">
-              <span className="sidebar-version-text">v2.2 · Supabase & Google Verified</span>
+              <span className="sidebar-version-text">v2.3 · Neon & Google Verified</span>
             </div>
           )}
         </div>
