@@ -136,7 +136,13 @@ router.post('/check-in', async (req, res) => {
       [tokenString, userId]
     );
 
-    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = $1`, [recordId]);
+    const record = await db.getAsync(
+      `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
+       FROM attendance_records ar 
+       LEFT JOIN users u ON ar.user_id = u.id 
+       WHERE ar.id = $1`,
+      [recordId]
+    );
     res.json({
       success: true,
       record,
@@ -211,7 +217,13 @@ router.post('/check-out', async (req, res) => {
       [tokenString, userId]
     );
 
-    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = $1`, [recordId]);
+    const record = await db.getAsync(
+      `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
+       FROM attendance_records ar 
+       LEFT JOIN users u ON ar.user_id = u.id 
+       WHERE ar.id = $1`,
+      [recordId]
+    );
     res.json({ success: true, record, message: 'Checked out successfully. Shift ended.' });
   } catch (err) {
     console.error('Check-out error:', err);
@@ -272,7 +284,13 @@ router.post('/break', async (req, res) => {
         ]
       );
 
-      const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = $1`, [recordId]);
+      const record = await db.getAsync(
+        `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
+         FROM attendance_records ar 
+         LEFT JOIN users u ON ar.user_id = u.id 
+         WHERE ar.id = $1`,
+        [recordId]
+      );
       return res.json({ success: true, record, message: 'Break started. Timer running (30-40 min).' });
     }
 
@@ -324,7 +342,13 @@ router.post('/break', async (req, res) => {
         [tokenString, userId]
       );
 
-      const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = $1`, [recordId]);
+      const record = await db.getAsync(
+        `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
+         FROM attendance_records ar 
+         LEFT JOIN users u ON ar.user_id = u.id 
+         WHERE ar.id = $1`,
+        [recordId]
+      );
       return res.json({ success: true, record, message: 'Break ended via QR scan. Shift resumed!' });
     }
   } catch (err) {
@@ -401,7 +425,13 @@ router.post('/ot', async (req, res) => {
       [tokenString, userId, recordType]
     );
 
-    const record = await db.getAsync(`SELECT * FROM attendance_records WHERE id = $1`, [recordId]);
+    const record = await db.getAsync(
+      `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
+       FROM attendance_records ar 
+       LEFT JOIN users u ON ar.user_id = u.id 
+       WHERE ar.id = $1`,
+      [recordId]
+    );
     res.json({
       success: true,
       record,
@@ -555,16 +585,23 @@ router.get('/records', async (req, res) => {
     if (date) {
       const bounds = getDayBounds(date);
       const rows = await db.allAsync(
-        `SELECT * FROM attendance_records 
-         WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at < $3 
-         ORDER BY recorded_at DESC`,
+        `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
+         FROM attendance_records ar 
+         LEFT JOIN users u ON ar.user_id = u.id 
+         WHERE ar.user_id = $1 AND ar.recorded_at >= $2 AND ar.recorded_at < $3 
+         ORDER BY ar.recorded_at DESC`,
         [targetId, bounds.from, bounds.to]
       );
       return res.json({ records: rows, date: bounds.dateString });
     }
 
     const rows = await db.allAsync(
-      `SELECT * FROM attendance_records WHERE user_id = $1 ORDER BY recorded_at DESC LIMIT 200`,
+      `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
+       FROM attendance_records ar 
+       LEFT JOIN users u ON ar.user_id = u.id 
+       WHERE ar.user_id = $1 
+       ORDER BY ar.recorded_at DESC 
+       LIMIT 200`,
       [targetId]
     );
     res.json({ records: rows });

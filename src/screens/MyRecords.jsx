@@ -53,7 +53,7 @@ export default function MyRecords({ store }) {
         <div>
           <h1 className="screen-title">My Attendance History</h1>
           <p className="screen-sub">
-            {myRecords.length} total events recorded · Cryptographically signed SQLite database records
+            {myRecords.length} events logged · Authenticated QR scan history
           </p>
         </div>
         <div className="filter-tabs">

@@ -1,6 +1,6 @@
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useTimer } from '../hooks/useTimer.js';
-import { formatTime, formatDuration, getWeekDates } from '../utils/formatters.js';
+import { formatTime, formatDuration, getWeekDates, getEmployeeName, getEmployeeAvatar } from '../utils/formatters.js';
 import DayTimeline from '../components/DayTimeline.jsx';
 import {
   Users,
@@ -109,7 +109,7 @@ function WeekChart({ records = [], employees = [], isUserOnly, userEmail }) {
   );
 }
 
-function ActivityFeed({ records = [], isUserOnly }) {
+function ActivityFeed({ records = [], teamSummary = [], currentUser = null, isUserOnly }) {
   const recent = [...records]
     .sort(
       (a, b) =>
@@ -145,6 +145,8 @@ function ActivityFeed({ records = [], isUserOnly }) {
           const type = r.record_type || r.recordType;
           const time = r.recorded_at || r.recordedAt;
           const score = r.confidence_score || r.confidenceScore || 90;
+          const empName = getEmployeeName(r, teamSummary, currentUser);
+          const avatar = getEmployeeAvatar(r, teamSummary);
 
           return (
             <div
@@ -166,13 +168,12 @@ function ActivityFeed({ records = [], isUserOnly }) {
               />
               <div className="activity-body">
                 <div className="activity-action">
+                  <span className="emp-avatar-sm">{avatar}</span>
+                  <span className="activity-user-name font-semibold">{empName}</span>
                   <span className="activity-type-icon">{TYPE_ICONS[type]}</span>
                   <span className="activity-type">
                     {TYPE_LABELS[type] || 'Attendance Event'}
                   </span>
-                  {r.userName && (
-                    <span className="activity-user-name">({r.userName})</span>
-                  )}
                   {r.is_offline_sync === 1 && (
                     <span className="badge badge--warning">Offline Sync</span>
                   )}
@@ -181,7 +182,7 @@ function ActivityFeed({ records = [], isUserOnly }) {
                   )}
                 </div>
                 <div className="activity-meta font-mono">
-                  {formatTime(time)} · QR Verified · Confidence {score}%
+                  {formatTime(time)} · Station QR · {score}% Confidence
                 </div>
               </div>
               <div className="activity-time font-mono">{formatTime(time)}</div>
@@ -330,8 +331,8 @@ export default function Dashboard({ store }) {
           />
           <StatCard
             label="Security Mode"
-            value="SQLite Live"
-            sub="server authenticated"
+            value="Active"
+            sub="verified session"
             color="warning"
             icon={<ShieldCheck size={20} className="text-warning" />}
           />
@@ -348,6 +349,8 @@ export default function Dashboard({ store }) {
         />
         <ActivityFeed
           records={isAdmin ? store.auditRecords : myRecords}
+          teamSummary={teamSummary}
+          currentUser={user}
           isUserOnly={!isAdmin}
         />
       </div>
