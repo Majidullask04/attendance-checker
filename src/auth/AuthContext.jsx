@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../api/client.js';
-import { supabase, isSupabaseConfigured, checkIsAdminEmail, signInWithGoogle } from '../lib/supabase.js';
+import {
+  signInWithGoogle,
+  getNeonSession,
+  signOutFromNeon,
+  checkIsAdminEmail,
+  isNeonAuthLive,
+} from '../lib/neonAuth.js';
 
 const AuthContext = createContext(null);
 
@@ -8,47 +14,114 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingApproval, setPendingApproval] = useState(false);
-  const [authProvider, setAuthProvider] = useState('local'); // 'local' | 'supabase_google'
+  const [authProvider, setAuthProvider] = useState('local'); // 'local' | 'neon_google'
 
   useEffect(() => {
-    // 1. Check Supabase active session first if configured
-    if (isSupabaseConfigured) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
-          handleSupabaseUser(session.user);
-          setIsLoading(false);
-        } else {
+    let isMounted = true;
+
+    async function initAuth() {
+      try {
+        // 1. Check Neon Auth active session first (handles Google OAuth redirect return)
+        if (isNeonAuthLive) {
+          const neonData = await getNeonSession();
+          if (neonData?.user && isMounted) {
+            await handleNeonGoogleUser(neonData.user);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // 2. Check local/existing JWT token in storage
+        if (isMounted) {
           checkLocalToken();
         }
-      });
-
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        if (session?.user) {
-          handleSupabaseUser(session.user);
+      } catch (err) {
+        console.warn('Auth initialization error:', err);
+        if (isMounted) {
+          checkLocalToken();
         }
+      }
+    }
+
+    initAuth();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleNeonGoogleUser = async (neonUser) => {
+    const email = (neonUser.email || '').trim().toLowerCase();
+    const isAdmin = checkIsAdminEmail(email);
+
+    try {
+      // Sync with application backend to verify DB record and approval status
+      const syncResult = await api.neonSync({
+        email: email,
+        name: neonUser.name || email.split('@')[0],
+        avatar: neonUser.image || (isAdmin ? '⚡' : '👷'),
       });
 
-      return () => subscription?.unsubscribe();
-    } else {
-      checkLocalToken();
+      if (syncResult?.token) {
+        localStorage.setItem('attendance_token', syncResult.token);
+      }
+
+      const formattedUser = {
+        ...syncResult.user,
+        role: isAdmin ? 'admin' : (syncResult.user?.role || 'user'),
+        isAdminVerified: isAdmin,
+        authProvider: 'neon_google',
+      };
+
+      setUser(formattedUser);
+      setAuthProvider('neon_google');
+      setPendingApproval(false);
+    } catch (err) {
+      if (err.message?.includes('PENDING_APPROVAL') || err.message?.includes('pending admin approval')) {
+        setPendingApproval(true);
+        setUser(null);
+      } else {
+        console.error('Neon user sync error:', err);
+        // Fallback profile if backend sync fails temporarily
+        if (isAdmin) {
+          const fallbackAdmin = {
+            id: `neon-${email}`,
+            email: email,
+            name: neonUser.name || email.split('@')[0],
+            avatar: neonUser.image || '⚡',
+            role: 'admin',
+            department: 'Management',
+            isApproved: true,
+            isAdminVerified: true,
+            authProvider: 'neon_google',
+          };
+          setUser(fallbackAdmin);
+          setAuthProvider('neon_google');
+          setPendingApproval(false);
+        } else {
+          setPendingApproval(true);
+        }
+      }
     }
-  }, []);
+  };
 
   const checkLocalToken = () => {
     const token = localStorage.getItem('attendance_token');
     if (token) {
       api.me()
         .then((data) => {
-          if (data.user.isApproved) {
+          if (data.user?.isApproved || checkIsAdminEmail(data.user?.email)) {
             const isAdmin = checkIsAdminEmail(data.user.email) || data.user.role === 'admin';
             setUser({
               ...data.user,
               role: isAdmin ? 'admin' : 'user',
               isAdminVerified: isAdmin,
             });
+            setPendingApproval(false);
           } else {
             localStorage.removeItem('attendance_token');
             setPendingApproval(true);
+            setUser(null);
           }
         })
         .catch(() => {
@@ -61,52 +134,49 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const handleSupabaseUser = (sbUser) => {
-    const email = sbUser.email || '';
-    const isAdmin = checkIsAdminEmail(email);
-    const formattedUser = {
-      id: sbUser.id,
-      email: email,
-      name: sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || email.split('@')[0],
-      avatar: sbUser.user_metadata?.avatar_url || '👤',
-      role: isAdmin ? 'admin' : 'user',
-      department: sbUser.user_metadata?.department || (isAdmin ? 'Management' : 'Field Operations'),
-      isApproved: true,
-      isAdminVerified: isAdmin,
-      authProvider: 'google',
-    };
-    setUser(formattedUser);
-    setAuthProvider('supabase_google');
-    setPendingApproval(false);
-  };
-
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = async (customPayload = null) => {
     setIsLoading(true);
     try {
-      const result = await signInWithGoogle();
-      if (result.simulated) {
-        // Simulated Google login for instant local demonstration
-        const email = prompt('Enter Google Account email to test sign-in (use mrelectricalworks02@gmail.com for admin access):', 'mrelectricalworks02@gmail.com');
-        if (!email) {
-          setIsLoading(false);
-          return;
-        }
+      if (customPayload && customPayload.email) {
+        const email = customPayload.email.trim().toLowerCase();
         const isAdmin = checkIsAdminEmail(email);
-        const simUser = {
-          id: `goog_${Date.now()}`,
-          email: email.trim(),
-          name: email.split('@')[0],
-          avatar: '⚡',
-          role: isAdmin ? 'admin' : 'user',
-          department: isAdmin ? 'Executive Admin' : 'Field Technician',
-          isApproved: true,
-          isAdminVerified: isAdmin,
-          authProvider: 'google_simulated',
-        };
-        setUser(simUser);
-        setAuthProvider('google_simulated');
-        localStorage.setItem('attendance_token', `sim_token_${simUser.id}`);
+
+        try {
+          const syncResult = await api.neonSync({
+            email: email,
+            name: customPayload.name || email.split('@')[0],
+            avatar: customPayload.avatar || (isAdmin ? '⚡' : '👷'),
+          });
+
+          if (syncResult?.token) {
+            localStorage.setItem('attendance_token', syncResult.token);
+          }
+
+          const simUser = {
+            ...syncResult.user,
+            role: isAdmin ? 'admin' : 'user',
+            isAdminVerified: isAdmin,
+            authProvider: 'neon_google',
+          };
+          setUser(simUser);
+          setAuthProvider('neon_google');
+          setPendingApproval(false);
+          return { success: true, user: simUser };
+        } catch (syncErr) {
+          if (syncErr.message?.includes('PENDING_APPROVAL') || syncErr.message?.includes('pending admin approval')) {
+            setPendingApproval(true);
+            setUser(null);
+            return { pending: true };
+          }
+          throw syncErr;
+        }
       }
+
+      const result = await signInWithGoogle();
+      if (result.needsModal) {
+        return { needsModal: true };
+      }
+      return result;
     } catch (err) {
       console.error('Google sign in error:', err);
       throw err;
@@ -137,13 +207,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.auth.signOut();
-      } catch (e) {
-        console.warn('Supabase signout error:', e);
-      }
-    }
+    await signOutFromNeon();
     localStorage.removeItem('attendance_token');
     setUser(null);
     setPendingApproval(false);
@@ -164,7 +228,7 @@ export function AuthProvider({ children }) {
         isUser: !isAdmin,
         isAuthenticated: !!user,
         authProvider,
-        isSupabaseConfigured,
+        isNeonAuthLive,
       }}
     >
       {children}

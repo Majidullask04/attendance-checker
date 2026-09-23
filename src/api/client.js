@@ -102,6 +102,7 @@ export const api = {
   // Auth endpoints
   signup: (payload) => request('/auth/signup', { method: 'POST', body: JSON.stringify(payload) }),
   login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  neonSync: (payload) => request('/auth/neon-sync', { method: 'POST', body: JSON.stringify(payload) }),
   me: () => request('/auth/me'),
 
   // Admin approval endpoints

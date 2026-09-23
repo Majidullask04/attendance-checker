@@ -5,7 +5,7 @@ import db from '../db.js';
 import { signToken, verifyToken, requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@localhost';
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'mrelectricalworks02@gmail.com').toLowerCase();
 const SALT_ROUNDS = 12;
 
 // ── Helper: hash password ───────────────────────────────────────────────────
@@ -37,14 +37,14 @@ router.post('/signup', async (req, res) => {
 
   try {
     // Check if email already exists
-    const existing = await db.getAsync(`SELECT * FROM users WHERE email = $1`, [normalizedEmail]);
+    const existing = await db.getAsync(`SELECT * FROM users WHERE LOWER(email) = $1`, [normalizedEmail]);
     if (existing) {
       return res.status(409).json({ error: 'An account with this email already exists. Please sign in instead.' });
     }
 
     const id = `emp-${randomUUID().slice(0, 6)}`;
     const passwordHash = await hashPassword(password);
-    const isAdmin = normalizedEmail === ADMIN_EMAIL.toLowerCase();
+    const isAdmin = normalizedEmail === ADMIN_EMAIL;
     const role = isAdmin ? 'admin' : 'user';
     const avatar = isAdmin ? '👑' : '👷';
     const deviceId = `dev-${id}`;
@@ -86,7 +86,7 @@ router.post('/login', async (req, res) => {
   const normalizedEmail = email.toLowerCase().trim();
 
   try {
-    const user = await db.getAsync(`SELECT * FROM users WHERE email = $1`, [normalizedEmail]);
+    const user = await db.getAsync(`SELECT * FROM users WHERE LOWER(email) = $1`, [normalizedEmail]);
 
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
@@ -99,7 +99,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Check approval
-    if (!user.is_approved) {
+    if (!user.is_approved && user.role !== 'admin') {
       return res.status(403).json({
         error: 'Your account is pending admin approval. Please contact your administrator.',
         code: 'PENDING_APPROVAL',
@@ -126,11 +126,105 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ── POST /api/auth/neon-sync ────────────────────────────────────────────────
+// Synchronizes Neon Auth Google user with database & checks admin approval
+router.post('/neon-sync', async (req, res) => {
+  const { email, name, avatar } = req.body;
+
+  if (!email?.trim() || !email.includes('@')) {
+    return res.status(400).json({ error: 'A valid email address is required.' });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  const isAdmin = normalizedEmail === ADMIN_EMAIL;
+
+  try {
+    let user = await db.getAsync(`SELECT * FROM users WHERE LOWER(email) = $1`, [normalizedEmail]);
+
+    if (!user) {
+      // Create new employee record for first-time Google sign-in
+      const id = `emp-${randomUUID().slice(0, 6)}`;
+      const role = isAdmin ? 'admin' : 'user';
+      const userAvatar = avatar || (isAdmin ? '👑' : '👷');
+      const deviceId = `dev-${id}`;
+      const isApproved = isAdmin ? 1 : 0;
+      const userName = name?.trim() || normalizedEmail.split('@')[0];
+
+      await db.runAsync(
+        `INSERT INTO users (id, email, password_hash, name, role, department, avatar, device_id, is_approved) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [id, normalizedEmail, null, userName, role, isAdmin ? 'Management' : 'Electrical', userAvatar, deviceId, isApproved]
+      );
+
+      user = await db.getAsync(`SELECT * FROM users WHERE id = $1`, [id]);
+    } else if (isAdmin && (!user.is_approved || user.role !== 'admin')) {
+      // Ensure admin email is always approved with admin role
+      await db.runAsync(`UPDATE users SET role = 'admin', is_approved = 1 WHERE id = $1`, [user.id]);
+      user.role = 'admin';
+      user.is_approved = 1;
+    }
+
+    // If not approved and not admin, return pending approval status
+    if (!user.is_approved && user.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Your Google account is pending admin approval before access is granted.',
+        code: 'PENDING_APPROVAL',
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          department: user.department,
+          avatar: user.avatar,
+          isApproved: 0,
+        },
+      });
+    }
+
+    const token = signToken(user);
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        department: user.department,
+        avatar: user.avatar,
+        deviceId: user.device_id,
+        isApproved: user.is_approved,
+      },
+    });
+  } catch (err) {
+    console.error('Neon sync error:', err);
+    res.status(500).json({ error: 'Failed to synchronize user session.' });
+  }
+});
+
 // ── GET /api/auth/me ────────────────────────────────────────────────────────
 router.get('/me', verifyToken, async (req, res) => {
   try {
-    const user = await db.getAsync(`SELECT * FROM users WHERE id = $1`, [req.user.id]);
-    if (!user) return res.status(404).json({ error: 'User record not found.' });
+    let user = null;
+    if (req.user?.id) {
+      user = await db.getAsync(`SELECT * FROM users WHERE id = $1`, [req.user.id]);
+    }
+    if (!user && req.user?.email) {
+      user = await db.getAsync(`SELECT * FROM users WHERE LOWER(email) = $1`, [req.user.email.toLowerCase()]);
+    }
+
+    if (!user) {
+      // If user came via Neon token but hasn't synced yet, return token user info
+      return res.json({
+        user: {
+          id: req.user.id,
+          email: req.user.email,
+          name: req.user.name,
+          role: req.user.role,
+          department: req.user.department || 'Electrical',
+          avatar: req.user.avatar || '👷',
+          isApproved: req.user.isApproved || 0,
+        },
+      });
+    }
 
     res.json({
       user: {
