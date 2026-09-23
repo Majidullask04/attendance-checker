@@ -2,13 +2,27 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { useTimer } from '../hooks/useTimer.js';
 import { formatTime, formatDuration, getWeekDates } from '../utils/formatters.js';
 import DayTimeline from '../components/DayTimeline.jsx';
+import {
+  Users,
+  AlertTriangle,
+  CheckCircle2,
+  ShieldAlert,
+  Zap,
+  Clock,
+  ClipboardList,
+  ShieldCheck,
+  Coffee,
+  Play,
+  FastForward,
+  Square,
+} from 'lucide-react';
 
 function StatCard({ label, value, sub, color, icon }) {
   return (
-    <div className={`stat-card stat-card--${color}`}>
+    <div className={`stat-card stat-card--${color} interactive-item`}>
       <div className="stat-card-icon">{icon}</div>
       <div className="stat-card-body">
-        <div className="stat-card-value">{value}</div>
+        <div className="stat-card-value font-mono">{value}</div>
         <div className="stat-card-label">{label}</div>
         {sub && <div className="stat-card-sub">{sub}</div>}
       </div>
@@ -16,14 +30,14 @@ function StatCard({ label, value, sub, color, icon }) {
   );
 }
 
-function WeekChart({ records, employees, isUserOnly, userEmail }) {
+function WeekChart({ records = [], employees = [], isUserOnly, userEmail }) {
   const days = getWeekDates();
   const today = new Date().toDateString();
 
   return (
     <div className="week-chart">
       <h3 className="section-title">
-        {isUserOnly ? 'My Attendance This Week' : "Team Attendance This Week"}
+        {isUserOnly ? 'My Attendance This Week' : 'Team Attendance This Week'}
       </h3>
       <div className="week-chart-bars">
         {days.map((day, i) => {
@@ -95,7 +109,7 @@ function WeekChart({ records, employees, isUserOnly, userEmail }) {
   );
 }
 
-function ActivityFeed({ records, isUserOnly }) {
+function ActivityFeed({ records = [], isUserOnly }) {
   const recent = [...records]
     .sort(
       (a, b) =>
@@ -103,25 +117,34 @@ function ActivityFeed({ records, isUserOnly }) {
     )
     .slice(0, 8);
 
+  const TYPE_ICONS = {
+    check_in: <CheckCircle2 size={13} className="text-success" />,
+    check_out: <CheckCircle2 size={13} className="text-info" />,
+    break_start: <Coffee size={13} className="text-warning" />,
+    break_end: <Play size={13} className="text-success" />,
+    ot_start: <FastForward size={13} className="text-purple" />,
+    ot_end: <Square size={13} className="text-purple" />,
+  };
+
+  const TYPE_LABELS = {
+    check_in: 'Checked In',
+    check_out: 'Checked Out',
+    break_start: 'Break Started',
+    break_end: 'Break Resumed',
+    ot_start: 'Overtime Started',
+    ot_end: 'Overtime Ended',
+  };
+
   return (
     <div className="activity-feed">
       <h3 className="section-title">
-        {isUserOnly ? 'My Recent Check-ins' : 'Live System Activity'}
+        {isUserOnly ? 'My Recent Activity' : 'Live Operations Activity'}
       </h3>
-      <div className="activity-list">
+      <div className="activity-list stagger-group">
         {recent.map((r) => {
           const type = r.record_type || r.recordType;
           const time = r.recorded_at || r.recordedAt;
           const score = r.confidence_score || r.confidenceScore || 90;
-
-          const TYPE_LABELS = {
-            check_in: '▲ Checked In',
-            check_out: '▼ Checked Out',
-            break_start: '☕ Break Started',
-            break_end: '▶ Break Ended',
-            ot_start: '⏫ OT Started',
-            ot_end: '⏹ OT Ended',
-          };
 
           return (
             <div
@@ -143,8 +166,9 @@ function ActivityFeed({ records, isUserOnly }) {
               />
               <div className="activity-body">
                 <div className="activity-action">
+                  <span className="activity-type-icon">{TYPE_ICONS[type]}</span>
                   <span className="activity-type">
-                    {TYPE_LABELS[type] || '• Event'}
+                    {TYPE_LABELS[type] || 'Attendance Event'}
                   </span>
                   {r.userName && (
                     <span className="activity-user-name">({r.userName})</span>
@@ -156,16 +180,16 @@ function ActivityFeed({ records, isUserOnly }) {
                     <span className="badge badge--danger">Flagged</span>
                   )}
                 </div>
-                <div className="activity-meta">
-                  {formatTime(time)} · QR Verified · Score {score}%
+                <div className="activity-meta font-mono">
+                  {formatTime(time)} · QR Verified · Confidence {score}%
                 </div>
               </div>
-              <div className="activity-time">{formatTime(time)}</div>
+              <div className="activity-time font-mono">{formatTime(time)}</div>
             </div>
           );
         })}
         {recent.length === 0 && (
-          <div className="activity-empty">No activity records yet</div>
+          <div className="activity-empty">No activity records recorded today</div>
         )}
       </div>
     </div>
@@ -175,10 +199,10 @@ function ActivityFeed({ records, isUserOnly }) {
 export default function Dashboard({ store }) {
   const { isAdmin, user } = useAuth();
   const {
-    stats,
-    teamSummary,
-    records,
-    myRecords,
+    stats = {},
+    teamSummary = [],
+    records = [],
+    myRecords = [],
     currentCheckIn,
     attendanceState,
     setActiveScreen,
@@ -220,7 +244,7 @@ export default function Dashboard({ store }) {
           <div className="live-timer">
             <span className="live-timer-dot" />
             <span className="live-timer-label">On Site</span>
-            <span className="live-timer-elapsed">{timer.formatted}</span>
+            <span className="live-timer-elapsed font-mono">{timer.formatted}</span>
           </div>
         )}
       </div>
@@ -229,38 +253,38 @@ export default function Dashboard({ store }) {
 
       {/* Stats Row */}
       {isAdmin ? (
-        <div className="stats-grid">
+        <div className="stats-grid stagger-group">
           <StatCard
             label="Present Today"
-            value={stats.presentToday}
-            sub={`of ${stats.totalEmployees} employees`}
+            value={stats.presentToday ?? 0}
+            sub={`of ${stats.totalEmployees ?? 0} employees`}
             color="success"
-            icon="👥"
+            icon={<Users size={20} className="text-success" />}
           />
           <StatCard
             label="Absent"
-            value={stats.absentToday}
+            value={stats.absentToday ?? 0}
             sub="not checked in"
             color="danger"
-            icon="⚠️"
+            icon={<AlertTriangle size={20} className="text-danger" />}
           />
           <StatCard
             label="Completed Shifts"
-            value={stats.checkedOut}
+            value={stats.checkedOut ?? 0}
             sub="checked out"
             color="info"
-            icon="✓"
+            icon={<CheckCircle2 size={20} className="text-info" />}
           />
           <StatCard
             label="Flagged Records"
-            value={stats.flaggedRecords}
+            value={stats.flaggedRecords ?? 0}
             sub="needs admin review"
             color="warning"
-            icon="⚑"
+            icon={<ShieldAlert size={20} className="text-warning" />}
           />
         </div>
       ) : (
-        <div className="stats-grid">
+        <div className="stats-grid stagger-group">
           <StatCard
             label="Shift Status"
             value={
@@ -278,7 +302,7 @@ export default function Dashboard({ store }) {
                 : 'Scan QR to start'
             }
             color={attendanceState === 'checked_in' ? 'success' : 'info'}
-            icon="⚡"
+            icon={<Zap size={20} className="text-accent" />}
           />
           <StatCard
             label="Today's Duration"
@@ -295,21 +319,21 @@ export default function Dashboard({ store }) {
             }
             sub="worked hours"
             color="info"
-            icon="⏱️"
+            icon={<Clock size={20} className="text-info" />}
           />
           <StatCard
             label="My Records"
             value={myRecords.length}
             sub="recorded events"
             color="success"
-            icon="📋"
+            icon={<ClipboardList size={20} className="text-success" />}
           />
           <StatCard
-            label="API Mode"
+            label="Security Mode"
             value="SQLite Live"
             sub="server authenticated"
             color="warning"
-            icon="🔒"
+            icon={<ShieldCheck size={20} className="text-warning" />}
           />
         </div>
       )}
@@ -341,15 +365,15 @@ export default function Dashboard({ store }) {
             </button>
           </div>
 
-          <div className="team-quick-grid">
+          <div className="team-quick-grid stagger-group">
             {teamSummary.map((emp) => (
               <div
                 key={emp.id}
                 className={`team-quick-card ${
                   emp.flagged ? 'team-quick-card--flagged' : ''
-                }`}
+                } interactive-item`}
               >
-                <div className="team-quick-avatar">{emp.avatar}</div>
+                <div className="team-quick-avatar">{emp.avatar || '👤'}</div>
                 <div className="team-quick-info">
                   <div className="team-quick-name">{emp.name}</div>
                   <div className="team-quick-dept">
@@ -364,7 +388,7 @@ export default function Dashboard({ store }) {
                     : '○ Absent'}
                 </div>
                 {emp.checkInTime && (
-                  <div className="team-quick-time">
+                  <div className="team-quick-time font-mono">
                     In: {formatTime(emp.checkInTime)}
                   </div>
                 )}

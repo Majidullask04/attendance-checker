@@ -10,10 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.0",
     "html5-qrcode": "^2.3.8",
+    "lucide-react": "^1.47.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "sonner": "^2.0.8"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",

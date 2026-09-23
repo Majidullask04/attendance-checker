@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { formatTime, formatDate, confidenceLabel } from '../utils/formatters.js';
+import {
+  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
+  Lock,
+  X,
+  FileText,
+  CheckCircle2,
+} from 'lucide-react';
 
 const FRAUD_CHECKS = [
   {
@@ -37,7 +46,7 @@ const FRAUD_CHECKS = [
 
 export default function AuditLog({ store }) {
   const { isAdmin, user } = useAuth();
-  const { auditRecords, correctRecord, addToast, setActiveScreen } = store;
+  const { auditRecords = [], correctRecord, addToast, setActiveScreen } = store;
   const [correcting, setCorrecting] = useState(null);
   const [correctionNote, setCorrectionNote] = useState('');
 
@@ -45,7 +54,7 @@ export default function AuditLog({ store }) {
     return (
       <div className="screen fade-in">
         <div className="unauthorized-card">
-          <div className="unauthorized-icon">🔒</div>
+          <div className="unauthorized-icon"><Lock size={32} /></div>
           <h2>Admin Restricted Section</h2>
           <p>You need Administrator privileges to access security audit logs and corrections.</p>
           <button className="btn-primary" onClick={() => setActiveScreen('dashboard')}>
@@ -91,7 +100,7 @@ export default function AuditLog({ store }) {
         {flagged.length > 0 && (
           <div className="audit-flag-count">
             <span className="badge badge--danger badge--lg">
-              ⚑ {flagged.length} flagged records
+              <AlertTriangle size={14} /> {flagged.length} flagged records
             </span>
           </div>
         )}
@@ -99,10 +108,12 @@ export default function AuditLog({ store }) {
 
       {/* Fraud Controls Grid */}
       <div className="audit-fraud-panel">
-        <h3 className="section-title">🛡️ Active Fraud Mitigation Engine</h3>
-        <div className="fraud-checks-grid">
+        <h3 className="section-title">
+          <ShieldCheck size={16} className="text-success" /> Active Fraud Mitigation Engine
+        </h3>
+        <div className="fraud-checks-grid stagger-group">
           {FRAUD_CHECKS.map((fc) => (
-            <div key={fc.id} className="fraud-check-item">
+            <div key={fc.id} className="fraud-check-item interactive-item">
               <div className="fraud-check-dot" />
               <div className="fraud-check-body">
                 <div className="fraud-check-label">{fc.label}</div>
@@ -118,9 +129,9 @@ export default function AuditLog({ store }) {
       {flagged.length > 0 && (
         <div className="audit-section">
           <h3 className="section-title text-danger">
-            ⚑ Low-Confidence Records — Action Required
+            <AlertTriangle size={16} /> Low-Confidence Records — Action Required
           </h3>
-          <div className="records-group">
+          <div className="records-group stagger-group">
             {flagged.map((r) => {
               const type = r.record_type || r.recordType;
               const time = r.recorded_at || r.recordedAt;
@@ -129,8 +140,8 @@ export default function AuditLog({ store }) {
               const conf = confidenceLabel(score);
 
               return (
-                <div key={r.id} className="record-row record-row--flagged">
-                  <div className="record-emp">
+                <div key={r.id} className="record-row record-row--flagged interactive-item">
+                  <div className="record-emp font-semibold">
                     {r.userName || r.userEmail || r.user_id}
                   </div>
                   <div
@@ -138,7 +149,7 @@ export default function AuditLog({ store }) {
                       type === 'check_in' ? 'badge-in' : 'badge-out'
                     }`}
                   >
-                    {type === 'check_in' ? '▲ IN' : '▼ OUT'}
+                    {type === 'check_in' ? 'CHECK IN' : 'CHECK OUT'}
                   </div>
                   <div className="record-time font-mono">
                     {formatDate(time)} {formatTime(time)}
@@ -157,7 +168,7 @@ export default function AuditLog({ store }) {
                   <button
                     className="btn-correct"
                     onClick={() => handleCorrect(r)}
-                    id={`btn-correct-${r.id.slice(-6)}`}
+                    id={`btn-correct-${r.id?.slice(-6)}`}
                   >
                     Audit / Correct
                   </button>
@@ -170,7 +181,9 @@ export default function AuditLog({ store }) {
 
       {/* Audit Log Table */}
       <div className="audit-section">
-        <h3 className="section-title">📋 Immutable Event Stream (Latest 50 Entries)</h3>
+        <h3 className="section-title">
+          <FileText size={16} className="text-accent" /> Immutable Event Stream (Latest 50 Entries)
+        </h3>
         <div className="audit-log-table">
           <div className="audit-log-header">
             <span>Timestamp</span>
@@ -181,63 +194,65 @@ export default function AuditLog({ store }) {
             <span>Confidence</span>
             <span>Status</span>
           </div>
-          {all.map((r) => {
-            const type = r.record_type || r.recordType;
-            const time = r.recorded_at || r.recordedAt;
-            const token = r.qr_token || r.qrTokenId;
-            const score = r.confidence_score || r.confidenceScore || 90;
-            const conf = confidenceLabel(score);
+          <div className="stagger-group">
+            {all.map((r) => {
+              const type = r.record_type || r.recordType;
+              const time = r.recorded_at || r.recordedAt;
+              const token = r.qr_token || r.qrTokenId;
+              const score = r.confidence_score || r.confidenceScore || 90;
+              const conf = confidenceLabel(score);
 
-            return (
-              <div
-                key={r.id}
-                className={`audit-log-row ${
-                  r.status === 'flagged' ? 'audit-log-row--flagged' : ''
-                }`}
-              >
-                <span className="font-mono">
-                  {formatDate(time)} {formatTime(time)}
-                </span>
-                <span>{r.userName || r.userEmail || r.user_id}</span>
-                <span>
-                  <span
-                    className={`record-type-badge-sm ${
-                      type === 'check_in' ? 'badge-in' : 'badge-out'
-                    }`}
-                  >
-                    {type === 'check_in' ? '▲ IN' : '▼ OUT'}
+              return (
+                <div
+                  key={r.id}
+                  className={`audit-log-row ${
+                    r.status === 'flagged' ? 'audit-log-row--flagged' : ''
+                  } interactive-item`}
+                >
+                  <span className="font-mono text-muted">
+                    {formatDate(time)} {formatTime(time)}
                   </span>
-                </span>
-                <span className="font-mono text-accent">QR_CODE</span>
-                <span className="font-mono text-muted" title={token}>
-                  {token ? `${token.slice(0, 10)}…` : '---'}
-                </span>
-                <span>
-                  <span className={`badge badge--${conf.color}`}>
-                    {score}%
+                  <span className="font-medium">{r.userName || r.userEmail || r.user_id}</span>
+                  <span>
+                    <span
+                      className={`record-type-badge-sm ${
+                        type === 'check_in' ? 'badge-in' : 'badge-out'
+                      }`}
+                    >
+                      {type === 'check_in' ? '▲ IN' : '▼ OUT'}
+                    </span>
                   </span>
-                </span>
-                <span>
-                  <span
-                    className={`badge badge--${
-                      r.status === 'flagged'
-                        ? 'danger'
-                        : r.status === 'corrected'
-                        ? 'info'
-                        : 'success'
-                    }`}
-                  >
-                    {r.status}
+                  <span className="font-mono text-accent">QR_CODE</span>
+                  <span className="font-mono text-muted" title={token}>
+                    {token ? `${token.slice(0, 10)}…` : '---'}
                   </span>
-                </span>
+                  <span>
+                    <span className={`badge badge--${conf.color}`}>
+                      {score}%
+                    </span>
+                  </span>
+                  <span>
+                    <span
+                      className={`badge badge--${
+                        r.status === 'flagged'
+                          ? 'danger'
+                          : r.status === 'corrected'
+                          ? 'info'
+                          : 'success'
+                      }`}
+                    >
+                      {r.status}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+            {all.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-text">No audit records logged in database yet</div>
               </div>
-            );
-          })}
-          {all.length === 0 && (
-            <div className="empty-state">
-              <div className="empty-text">No audit records logged in database yet</div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -245,7 +260,7 @@ export default function AuditLog({ store }) {
       {correcting && (
         <div className="modal-overlay" onClick={() => setCorrecting(null)}>
           <div
-            className="modal"
+            className="modal fade-in"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -257,7 +272,7 @@ export default function AuditLog({ store }) {
                 onClick={() => setCorrecting(null)}
                 aria-label="Close modal"
               >
-                ✕
+                <X size={16} />
               </button>
             </div>
             <div className="modal-body">
@@ -265,14 +280,16 @@ export default function AuditLog({ store }) {
                 <strong>Append-Only Protocol:</strong> The original record is preserved in SQLite. A linked correction note will be saved with your administrator email ({user?.email}) for labor and audit compliance.
               </p>
               <div className="modal-record">
-                <div>Record ID: {correcting.id}</div>
-                <div>User: {correcting.userName || correcting.userEmail || correcting.user_id}</div>
+                <div>Record ID: <span className="font-mono">{correcting.id}</span></div>
+                <div>User: <strong>{correcting.userName || correcting.userEmail || correcting.user_id}</strong></div>
                 <div>
                   Recorded:{' '}
-                  {formatDate(correcting.recorded_at || correcting.recordedAt)}{' '}
-                  {formatTime(correcting.recorded_at || correcting.recordedAt)}
+                  <span className="font-mono">
+                    {formatDate(correcting.recorded_at || correcting.recordedAt)}{' '}
+                    {formatTime(correcting.recorded_at || correcting.recordedAt)}
+                  </span>
                 </div>
-                <div>QR Token: {correcting.qr_token || correcting.qrTokenId}</div>
+                <div>QR Token: <span className="font-mono">{correcting.qr_token || correcting.qrTokenId}</span></div>
               </div>
 
               <label className="modal-label" htmlFor="correction-reason">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
-import { formatTime, formatDate } from '../utils/formatters';
+import { formatTime } from '../utils/formatters';
+import { RefreshCw, Copy, Check, Zap, ShieldCheck, Building2, AlertTriangle } from 'lucide-react';
 
 export default function QRGenerator({ store }) {
   const {
@@ -9,7 +10,7 @@ export default function QRGenerator({ store }) {
     activeLocation,
     locations,
     setActiveLocation,
-    todayRecords,
+    todayRecords = [],
     addToast,
   } = store;
 
@@ -17,25 +18,23 @@ export default function QRGenerator({ store }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Generate QR image whenever currentQRToken or activeLocation changes
-  // Uses compact short-key format to keep QR codes scannable at lower resolutions
   useEffect(() => {
     if (!currentQRToken) {
       setQrDataUrl('');
       return;
     }
 
-    // Compact payload: short keys reduce QR density for faster scanning
     const compactPayload = JSON.stringify({
       l: currentQRToken.locationId,
       t: currentQRToken.token || currentQRToken.tokenId,
       g: Math.floor(new Date(currentQRToken.generatedAt).getTime() / 1000),
     });
+    
     QRCode.toDataURL(compactPayload, {
       width: 280,
       margin: 2,
       color: {
-        dark: '#0f172a',
+        dark: '#0a0d14',
         light: '#ffffff',
       },
       errorCorrectionLevel: 'H',
@@ -52,7 +51,7 @@ export default function QRGenerator({ store }) {
   const handleRegenerate = async () => {
     setIsGenerating(true);
     try {
-      const newToken = await generateNewQRToken(activeLocation);
+      await generateNewQRToken(activeLocation);
       addToast('New QR Token generated. Previous QR is now invalid.', 'success');
     } catch (e) {
       addToast('Error generating token', 'error');
@@ -66,7 +65,7 @@ export default function QRGenerator({ store }) {
     navigator.clipboard.writeText(JSON.stringify(currentQRToken, null, 2));
     setCopied(true);
     addToast('QR Payload copied to clipboard', 'info');
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const qrUsageCount = todayRecords.filter(
@@ -98,7 +97,7 @@ export default function QRGenerator({ store }) {
             </div>
           ) : (
             <div className="qr-placeholder">
-              <div className="qr-placeholder-icon">⚡</div>
+              <div className="qr-placeholder-icon"><Zap size={32} /></div>
               <p>No active token found</p>
               <button
                 className="btn-primary"
@@ -116,7 +115,7 @@ export default function QRGenerator({ store }) {
             <div className="token-detail-row">
               <span className="token-detail-label">Token ID</span>
               <span className="token-detail-val font-mono" title={currentQRToken.tokenId}>
-                {currentQRToken.tokenId.slice(0, 16)}…
+                {currentQRToken.tokenId?.slice(0, 16)}…
               </span>
             </div>
 
@@ -149,7 +148,9 @@ export default function QRGenerator({ store }) {
             onClick={handleRegenerate}
             disabled={isGenerating}
           >
-            <span className="btn-icon">{isGenerating ? '⟳' : '⚡'}</span>
+            <span className="btn-icon">
+              <RefreshCw size={15} className={isGenerating ? 'spin-anim' : ''} />
+            </span>
             <span>{isGenerating ? 'Generating…' : 'Regenerate QR Token'}</span>
           </button>
 
@@ -159,13 +160,21 @@ export default function QRGenerator({ store }) {
             onClick={handleCopyPayload}
             title="Copy raw JSON payload"
           >
-            {copied ? '✓ Copied' : '📋 Copy JSON'}
+            {copied ? (
+              <>
+                <Check size={14} className="text-success" /> Copied
+              </>
+            ) : (
+              <>
+                <Copy size={14} /> Copy JSON
+              </>
+            )}
           </button>
         </div>
 
         {/* Warning Banner */}
         <div className="qr-security-warning">
-          <span className="warning-icon">⚠️</span>
+          <span className="warning-icon"><AlertTriangle size={16} /></span>
           <p>
             <strong>Security Notice:</strong> Regenerating the QR token immediately
             invalidates all older printouts and screenshots to prevent replay fraud.
@@ -176,7 +185,9 @@ export default function QRGenerator({ store }) {
       {/* Admin Settings & Location Info Panel */}
       <div className="qr-admin-sidebar">
         <div className="info-card">
-          <div className="info-card-title">🏢 Station Geofence</div>
+          <div className="info-card-title">
+            <Building2 size={16} className="text-accent" /> Station Geofence
+          </div>
           <div className="location-select-wrap">
             <label className="form-label" htmlFor="location-select">
               Active Attendance Site:
@@ -184,7 +195,7 @@ export default function QRGenerator({ store }) {
             <select
               id="location-select"
               className="location-select"
-              value={activeLocation.id}
+              value={activeLocation?.id}
               onChange={(e) => {
                 const loc = locations.find((l) => l.id === e.target.value);
                 if (loc) {
@@ -202,30 +213,32 @@ export default function QRGenerator({ store }) {
             </select>
           </div>
 
-          <div className="info-card-items" style={{ marginTop: '12px' }}>
+          <div className="info-card-items" style={{ marginTop: '14px' }}>
             <div className="info-card-row">
               <span className="info-card-row-label">Coordinates</span>
               <span className="info-card-row-val font-mono">
-                {activeLocation.lat.toFixed(4)}, {activeLocation.lng.toFixed(4)}
+                {activeLocation?.lat?.toFixed(4)}, {activeLocation?.lng?.toFixed(4)}
               </span>
             </div>
             <div className="info-card-row">
               <span className="info-card-row-label">Approved WiFi</span>
               <span className="info-card-row-val font-mono">
-                {activeLocation.wifi_ssid}
+                {activeLocation?.wifi_ssid}
               </span>
             </div>
             <div className="info-card-row">
               <span className="info-card-row-label">Geofence Radius</span>
               <span className="info-card-row-val font-mono">
-                {activeLocation.radius} meters
+                {activeLocation?.radius} meters
               </span>
             </div>
           </div>
         </div>
 
         <div className="info-card">
-          <div className="info-card-title">🛡️ Anti-Fraud Rules Active</div>
+          <div className="info-card-title">
+            <ShieldCheck size={16} className="text-success" /> Anti-Fraud Protections
+          </div>
           <div className="anti-fraud-list">
             <div className="anti-fraud-item">
               <span className="badge badge--success">Active</span>

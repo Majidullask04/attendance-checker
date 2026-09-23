@@ -1,17 +1,27 @@
 import { useState } from 'react';
 import { formatTime, formatDuration, confidenceLabel, groupRecordsByDay } from '../utils/formatters.js';
+import {
+  ClipboardList,
+  CheckCircle2,
+  Coffee,
+  Play,
+  FastForward,
+  Square,
+  Flag,
+  WifiOff,
+} from 'lucide-react';
 
 const TYPE_META = {
-  check_in: { badge: 'badge-in', label: '▲ IN' },
-  check_out: { badge: 'badge-out', label: '▼ OUT' },
-  break_start: { badge: 'badge-warning', label: '☕ BREAK' },
-  break_end: { badge: 'badge-in', label: '▶ RESUME' },
-  ot_start: { badge: 'badge-ot', label: '⏫ OT START' },
-  ot_end: { badge: 'badge-out', label: '⏹ OT END' },
+  check_in: { badge: 'badge-in', label: 'Check In', icon: <CheckCircle2 size={12} /> },
+  check_out: { badge: 'badge-out', label: 'Check Out', icon: <CheckCircle2 size={12} /> },
+  break_start: { badge: 'badge-warning', label: 'Break Start', icon: <Coffee size={12} /> },
+  break_end: { badge: 'badge-in', label: 'Break Resume', icon: <Play size={12} /> },
+  ot_start: { badge: 'badge-ot', label: 'OT Start', icon: <FastForward size={12} /> },
+  ot_end: { badge: 'badge-out', label: 'OT End', icon: <Square size={12} /> },
 };
 
 export default function MyRecords({ store }) {
-  const { myRecords } = store;
+  const { myRecords = [] } = store;
   const [filter, setFilter] = useState('all'); // all | flagged | offline
 
   const filtered = myRecords.filter((r) => {
@@ -48,17 +58,18 @@ export default function MyRecords({ store }) {
         </div>
         <div className="filter-tabs">
           {[
-            ['all', 'All Records'],
-            ['flagged', '⚑ Flagged'],
-            ['offline', '📵 Offline Scans'],
-          ].map(([val, label]) => (
+            ['all', 'All Records', <ClipboardList size={14} key="all" />],
+            ['flagged', 'Flagged', <Flag size={14} key="flg" />],
+            ['offline', 'Offline Scans', <WifiOff size={14} key="off" />],
+          ].map(([val, label, icon]) => (
             <button
               key={val}
               id={`filter-${val}`}
               className={`filter-tab ${filter === val ? 'active' : ''}`}
               onClick={() => setFilter(val)}
             >
-              {label}
+              {icon}
+              <span>{label}</span>
             </button>
           ))}
         </div>
@@ -67,7 +78,7 @@ export default function MyRecords({ store }) {
       <div className="records-list">
         {dailySummary.length === 0 && (
           <div className="empty-state">
-            <div className="empty-icon">📋</div>
+            <div className="empty-icon"><ClipboardList size={32} /></div>
             <div className="empty-text">No attendance records found matching this filter</div>
           </div>
         )}
@@ -83,14 +94,14 @@ export default function MyRecords({ store }) {
                 })}
               </div>
               {hours > 0 && (
-                <div className="day-group-summary">
+                <div className="day-group-summary font-mono">
                   <span className="day-group-hours">{formatDuration(hours)}</span>
                   <span className="day-group-label"> worked</span>
                 </div>
               )}
             </div>
 
-            <div className="records-group">
+            <div className="records-group stagger-group">
               {recs
                 .sort(
                   (a, b) =>
@@ -103,20 +114,18 @@ export default function MyRecords({ store }) {
                   const score = r.confidence_score || r.confidenceScore || 90;
                   const token = r.qr_token || r.qrTokenId;
                   const conf = confidenceLabel(score);
+                  const meta = TYPE_META[type] || { badge: 'badge-in', label: 'Event', icon: null };
 
                   return (
                     <div
                       key={r.id}
                       className={`record-row ${
                         r.status === 'flagged' ? 'record-row--flagged' : ''
-                      } ${r.status === 'corrected' ? 'record-row--corrected' : ''}`}
+                      } ${r.status === 'corrected' ? 'record-row--corrected' : ''} interactive-item`}
                     >
-                      <div
-                        className={`record-type-badge ${
-                          TYPE_META[type]?.badge || (type === 'check_in' ? 'badge-in' : 'badge-out')
-                        }`}
-                      >
-                        {TYPE_META[type]?.label || (type === 'check_in' ? '▲ IN' : '▼ OUT')}
+                      <div className={`record-type-badge ${meta.badge}`}>
+                        {meta.icon}
+                        <span>{meta.label}</span>
                       </div>
 
                       <div className="record-time font-mono">

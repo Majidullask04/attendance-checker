@@ -2,11 +2,26 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { formatTime, formatDuration } from '../utils/formatters.js';
 import { api } from '../api/client.js';
+import {
+  Download,
+  LayoutGrid,
+  Table as TableIcon,
+  Lock,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Coffee,
+  FastForward,
+  Square,
+  Calendar,
+  X,
+  ClipboardList,
+} from 'lucide-react';
 
 export default function Team({ store }) {
   const { isAdmin } = useAuth();
   const {
-    teamSummary,
+    teamSummary = [],
     selectedDate,
     setSelectedDate,
     loadTeamData,
@@ -50,7 +65,7 @@ export default function Team({ store }) {
     return (
       <div className="screen fade-in">
         <div className="unauthorized-card">
-          <div className="unauthorized-icon">🔒</div>
+          <div className="unauthorized-icon"><Lock size={32} /></div>
           <h2>Admin Restricted Section</h2>
           <p>You need Administrator privileges to view organizational team data.</p>
           <button className="btn-primary" onClick={() => setActiveScreen('dashboard')}>
@@ -83,11 +98,12 @@ export default function Team({ store }) {
         {/* Action Controls: Date Picker & PDF Export */}
         <div className="team-controls">
           <div className="date-picker-wrap">
+            <Calendar size={14} className="text-muted" />
             <label htmlFor="team-date-picker" className="date-label">Date (IST):</label>
             <input
               id="team-date-picker"
               type="date"
-              className="date-input"
+              className="date-input font-mono"
               value={selectedDate}
               onChange={(e) => handleDateChange(e.target.value)}
             />
@@ -99,46 +115,51 @@ export default function Team({ store }) {
             onClick={() => downloadReportPDF(selectedDate)}
             title="Download PDF attendance ledger for this date"
           >
-            <span>📥 Export PDF Report</span>
+            <Download size={14} />
+            <span>Export PDF Report</span>
           </button>
 
           <div className="view-toggle-wrap">
             <button
               className={`filter-tab ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
+              title="Table View"
             >
-              Table
+              <TableIcon size={14} />
+              <span>Table</span>
             </button>
             <button
               className={`filter-tab ${viewMode === 'cards' ? 'active' : ''}`}
               onClick={() => setViewMode('cards')}
+              title="Cards View"
             >
-              Cards
+              <LayoutGrid size={14} />
+              <span>Cards</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Summary Metrics Bar */}
-      <div className="team-stats-bar">
-        <div className="stat-pill stat-pill--present">
-          <span className="stat-pill-num">{presentCount}</span>
+      <div className="team-stats-bar stagger-group">
+        <div className="stat-pill stat-pill--present interactive-item">
+          <span className="stat-pill-num font-mono">{presentCount}</span>
           <span className="stat-pill-label">Present / Done</span>
         </div>
-        <div className="stat-pill stat-pill--late">
-          <span className="stat-pill-num">{lateCount}</span>
+        <div className="stat-pill stat-pill--late interactive-item">
+          <span className="stat-pill-num font-mono">{lateCount}</span>
           <span className="stat-pill-label">Late (&gt;9 AM)</span>
         </div>
-        <div className="stat-pill stat-pill--half">
-          <span className="stat-pill-num">{halfDayCount}</span>
+        <div className="stat-pill stat-pill--half interactive-item">
+          <span className="stat-pill-num font-mono">{halfDayCount}</span>
           <span className="stat-pill-label">Half Day</span>
         </div>
-        <div className="stat-pill stat-pill--absent">
-          <span className="stat-pill-num">{absentCount}</span>
+        <div className="stat-pill stat-pill--absent interactive-item">
+          <span className="stat-pill-num font-mono">{absentCount}</span>
           <span className="stat-pill-label">Absent</span>
         </div>
-        <div className="stat-pill stat-pill--ot">
-          <span className="stat-pill-num">{otCount}</span>
+        <div className="stat-pill stat-pill--ot interactive-item">
+          <span className="stat-pill-num font-mono">{otCount}</span>
           <span className="stat-pill-label">Overtime</span>
         </div>
       </div>
@@ -161,10 +182,10 @@ export default function Team({ store }) {
                   <th>Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="stagger-group">
                 {teamSummary.length === 0 ? (
                   <tr>
-                    <td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: 'var(--text-secondary)' }}>
+                    <td colSpan="9" style={{ textAlign: 'center', padding: '30px', color: 'var(--color-text-secondary)' }}>
                       No employee records found for this date.
                     </td>
                   </tr>
@@ -172,7 +193,7 @@ export default function Team({ store }) {
                   teamSummary.map((emp) => (
                     <tr
                       key={emp.id}
-                      className={selected === emp.id ? 'row-selected' : ''}
+                      className={`${selected === emp.id ? 'row-selected' : ''} interactive-item`}
                       onClick={() => setSelected(selected === emp.id ? null : emp.id)}
                       style={{ cursor: 'pointer' }}
                     >
@@ -259,14 +280,14 @@ export default function Team({ store }) {
 
       {/* CARDS VIEW */}
       {viewMode === 'cards' && (
-        <div className="team-grid">
+        <div className="team-grid stagger-group">
           {teamSummary.map((emp) => (
             <div
               key={emp.id}
               id={`team-card-${emp.id}`}
               className={`team-card ${emp.flagged ? 'team-card--flagged' : ''} ${
                 selected === emp.id ? 'team-card--selected' : ''
-              }`}
+              } interactive-item`}
               onClick={() => setSelected(selected === emp.id ? null : emp.id)}
               role="button"
               tabIndex={0}
@@ -309,14 +330,16 @@ export default function Team({ store }) {
               </div>
 
               {emp.otHours > 0 && (
-                <div className="team-card-ot-bar">
-                  ⏫ Overtime Recorded: <strong>{emp.otHours} hrs</strong>
+                <div className="team-card-ot-bar font-mono">
+                  <FastForward size={13} className="text-purple" />
+                  <span>Overtime: <strong>+{emp.otHours} hrs</strong></span>
                 </div>
               )}
 
               {emp.flagged && (
                 <div className="team-card-flag">
-                  ⚑ Low confidence score detected in database
+                  <AlertTriangle size={13} />
+                  <span>Low confidence score detected in database</span>
                 </div>
               )}
             </div>
@@ -331,7 +354,9 @@ export default function Team({ store }) {
             <h3 className="section-title">
               Attendance Events: {selectedEmp?.name || selectedEmp?.email} ({selectedDate})
             </h3>
-            <button className="btn-tiny" onClick={() => setSelected(null)}>✕ Close</button>
+            <button className="btn-tiny" onClick={() => setSelected(null)}>
+              <X size={14} /> Close
+            </button>
           </div>
 
           {isLoadingUser ? (
@@ -340,11 +365,11 @@ export default function Team({ store }) {
             </div>
           ) : userRecords.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">📋</div>
+              <div className="empty-icon"><ClipboardList size={32} /></div>
               <div className="empty-text">No attendance events recorded for this employee on {selectedDate}</div>
             </div>
           ) : (
-            <div className="records-group">
+            <div className="records-group stagger-group">
               {userRecords.map((r) => {
                 const type = r.record_type || r.recordType;
                 const time = r.recorded_at || r.recordedAt;
@@ -354,7 +379,7 @@ export default function Team({ store }) {
                 return (
                   <div
                     key={r.id}
-                    className={`record-row ${r.status === 'flagged' ? 'record-row--flagged' : ''}`}
+                    className={`record-row ${r.status === 'flagged' ? 'record-row--flagged' : ''} interactive-item`}
                   >
                     <div
                       className={`record-type-badge ${
@@ -372,17 +397,17 @@ export default function Team({ store }) {
                       }`}
                     >
                       {type === 'check_in'
-                        ? '▲ CHECK IN'
+                        ? 'CHECK IN'
                         : type === 'check_out'
-                        ? '▼ CHECK OUT'
+                        ? 'CHECK OUT'
                         : type === 'break_start'
-                        ? '☕ BREAK START'
+                        ? 'BREAK START'
                         : type === 'break_end'
-                        ? '▶ BREAK RESUME'
+                        ? 'BREAK RESUME'
                         : type === 'ot_start'
-                        ? '⏫ OT START'
+                        ? 'OT START'
                         : type === 'ot_end'
-                        ? '⏹ OT STOP'
+                        ? 'OT STOP'
                         : type}
                     </div>
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
+import { Camera, X, AlertTriangle, Zap, Clock } from 'lucide-react';
 
 export default function QRScanner({ onScan, onClose, currentQRToken }) {
   const [cameraError, setCameraError] = useState('');
@@ -15,7 +16,6 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
     const qrCodeSuccessCallback = (decodedText) => {
       if (hasScannedRef.current) return;
       hasScannedRef.current = true;
-      hasScannedRef.current = true;
       
       // Stop scanner before calling onScan
       html5QrCode
@@ -30,13 +30,13 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
         });
     };
 
-    const qrCodeErrorCallback = (_errorMessage) => {
+    const qrCodeErrorCallback = () => {
       // Normal frame-by-frame non-detection errors are suppressed
     };
 
     const config = {
-      fps: 10,
-      qrbox: { width: 250, height: 250 },
+      fps: 12,
+      qrbox: { width: 240, height: 240 },
       aspectRatio: 1.0,
     };
 
@@ -80,7 +80,6 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
         .then(() => scannerRef.current.clear())
         .catch(() => {});
     }
-    // Compact payload matching QRGenerator output
     const compact = {
       l: currentQRToken.locationId,
       t: currentQRToken.token || currentQRToken.tokenId,
@@ -109,7 +108,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
       <div className="scanner-modal fade-in" role="dialog" aria-modal="true">
         <div className="scanner-modal-header">
           <div className="scanner-title-wrap">
-            <span className="scanner-icon">📷</span>
+            <span className="scanner-icon"><Camera size={18} /></span>
             <h2 className="scanner-title">Scan Station QR Code</h2>
           </div>
           <button
@@ -117,7 +116,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
             onClick={onClose}
             aria-label="Close scanner"
           >
-            ✕
+            <X size={16} />
           </button>
         </div>
 
@@ -135,7 +134,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
 
         {cameraError && (
           <div className="scanner-error-box">
-            <span className="error-icon">⚠️</span>
+            <span className="error-icon"><AlertTriangle size={18} /></span>
             <div className="error-text">
               <p><strong>Camera Notice:</strong> {cameraError}</p>
               <p className="error-sub">
@@ -158,7 +157,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
                 className="btn-simulate-scan"
                 onClick={handleSimulateScan}
               >
-                ⚡ Test Scan Current Station QR
+                <Zap size={14} /> Test Scan Current Station QR
               </button>
 
               <button
@@ -167,7 +166,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
                 className="btn-simulate-expired"
                 onClick={handleSimulateExpiredScan}
               >
-                ⚠️ Test Expired Token
+                <Clock size={14} /> Test Expired Token
               </button>
             </div>
           )}

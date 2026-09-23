@@ -6,6 +6,20 @@ import { POLICY, getZonedNow, timeToMinutes } from '../config/policy.js';
 import QRGenerator from '../components/QRGenerator.jsx';
 import QRScanner from '../components/QRScanner.jsx';
 import DayTimeline from '../components/DayTimeline.jsx';
+import {
+  Camera,
+  Coffee,
+  Play,
+  FastForward,
+  Square,
+  MapPin,
+  Clock,
+  ClipboardList,
+  AlertTriangle,
+  WifiOff,
+  CheckCircle2,
+  Zap,
+} from 'lucide-react';
 
 function BreakCountdown({ breakStartTime }) {
   const [elapsed, setElapsed] = useState(() => {
@@ -32,9 +46,9 @@ function BreakCountdown({ breakStartTime }) {
   const isExceededMax = elapsed > MAX_SECONDS;
 
   return (
-    <div className="break-countdown-card">
+    <div className="break-countdown-card fade-in">
       <div className="break-countdown-header">
-        <span className="break-icon">☕</span>
+        <span className="break-icon"><Coffee size={18} className="text-warning" /></span>
         <span className="break-title">Afternoon Break Countdown</span>
       </div>
 
@@ -58,7 +72,10 @@ function BreakCountdown({ breakStartTime }) {
 
       {isExceededMax && (
         <div className="break-warning-banner">
-          ⚠️ <strong>Break exceeded 40 minutes!</strong> You must scan the Station QR code immediately, otherwise your attendance will be recorded as <strong>Half Day</strong>.
+          <AlertTriangle size={16} />
+          <div>
+            <strong>Break exceeded 40 minutes!</strong> Scan the Station QR code immediately, otherwise attendance will be marked as <strong>Half Day</strong>.
+          </div>
         </div>
       )}
 
@@ -137,7 +154,7 @@ export default function CheckIn({ store }) {
       <div className="screen fade-in">
         <div className="screen-header">
           <div>
-            <h1 className="screen-title">QR Code Station Manager</h1>
+            <h1 className="screen-title">Station QR Manager</h1>
             <p className="screen-sub">
               Display this dynamic station QR code at the work entrance for staff to check in, resume breaks, and record OT.
             </p>
@@ -192,11 +209,11 @@ export default function CheckIn({ store }) {
                   : attendanceState === 'ot_active'
                   ? 'Active Overtime (OT)'
                   : attendanceState === 'checking_in'
-                  ? 'Verifying…'
+                  ? 'Verifying Station…'
                   : 'Ready to Check In'}
               </div>
               {recordedTime && (
-                <div className="checkin-status-time">
+                <div className="checkin-status-time font-mono">
                   Shift started at {formatTime(recordedTime)}
                 </div>
               )}
@@ -229,7 +246,7 @@ export default function CheckIn({ store }) {
                 onClick={() => openScanner('check_in')}
                 disabled={isLoading}
               >
-                <span className="btn-icon">📷</span>
+                <span className="btn-icon"><Camera size={18} /></span>
                 <span>{isLoading ? 'Processing…' : 'Scan QR to Check In'}</span>
               </button>
             )}
@@ -243,7 +260,7 @@ export default function CheckIn({ store }) {
                     onClick={startBreak}
                     disabled={isLoading}
                   >
-                    ☕ Take Break (30-40m)
+                    <Coffee size={15} /> Take Break (30-40m)
                   </button>
 
                   <button
@@ -252,7 +269,7 @@ export default function CheckIn({ store }) {
                     onClick={() => openScanner('check_out')}
                     disabled={isLoading}
                   >
-                    <span className="btn-icon">📷</span>
+                    <span className="btn-icon"><Camera size={18} /></span>
                     <span>{isPost5PM ? 'Full Day Check-Out' : 'Check Out'}</span>
                   </button>
                 </div>
@@ -265,7 +282,7 @@ export default function CheckIn({ store }) {
                     onClick={() => openScanner('ot_start')}
                     disabled={isLoading}
                   >
-                    <span className="btn-icon">⏫</span>
+                    <span className="btn-icon"><FastForward size={18} /></span>
                     <span>Scan QR to Start Overtime (OT)</span>
                   </button>
                 )}
@@ -279,7 +296,7 @@ export default function CheckIn({ store }) {
                 onClick={() => openScanner('break_end')}
                 disabled={isLoading}
               >
-                <span className="btn-icon">📷</span>
+                <span className="btn-icon"><Camera size={18} /></span>
                 <span>Scan Station QR to Resume Shift</span>
               </button>
             )}
@@ -291,7 +308,7 @@ export default function CheckIn({ store }) {
                 onClick={() => openScanner('ot_end')}
                 disabled={isLoading}
               >
-                <span className="btn-icon">⏹</span>
+                <span className="btn-icon"><Square size={18} /></span>
                 <span>Scan Station QR to Stop Overtime</span>
               </button>
             )}
@@ -300,7 +317,8 @@ export default function CheckIn({ store }) {
           {/* Offline Notice */}
           {!isOnline && (
             <div className="offline-banner">
-              <span>📵 Network Offline — Real-time server sync paused.</span>
+              <WifiOff size={16} className="text-danger" />
+              <span>Network Offline — Real-time server sync paused. Queued locally.</span>
             </div>
           )}
         </div>
@@ -308,18 +326,22 @@ export default function CheckIn({ store }) {
         {/* Informational Panels */}
         <div className="checkin-info-col">
           <div className="info-card">
-            <div className="info-card-title">📍 Assigned Station</div>
-            <div className="info-card-value">{activeLocation.name}</div>
+            <div className="info-card-title">
+              <MapPin size={16} className="text-accent" /> Assigned Station
+            </div>
+            <div className="info-card-value">{activeLocation?.name || 'Main Entrance'}</div>
             <div className="info-card-sub">
-              Geofence Radius: {activeLocation.radius}m · WiFi: {activeLocation.wifi_ssid}
+              Geofence Radius: {activeLocation?.radius}m · WiFi: {activeLocation?.wifi_ssid}
             </div>
             <div className="info-card-coords font-mono">
-              GPS: {activeLocation.lat.toFixed(4)}, {activeLocation.lng.toFixed(4)}
+              GPS: {activeLocation?.lat?.toFixed(4)}, {activeLocation?.lng?.toFixed(4)}
             </div>
           </div>
 
           <div className="info-card">
-            <div className="info-card-title">⏰ Today's Shift Rules</div>
+            <div className="info-card-title">
+              <Clock size={16} className="text-warning" /> Today's Shift Rules
+            </div>
             <div className="info-card-items">
               <div className="info-card-row">
                 <span className="info-card-row-label">Check-In Window</span>
@@ -350,7 +372,9 @@ export default function CheckIn({ store }) {
 
           {currentCheckIn && (
             <div className="info-card">
-              <div className="info-card-title">📋 Current Shift Record</div>
+              <div className="info-card-title">
+                <ClipboardList size={16} className="text-success" /> Current Shift Record
+              </div>
               <div className="info-card-items">
                 <div className="info-card-row">
                   <span className="info-card-row-label">Checked In At</span>

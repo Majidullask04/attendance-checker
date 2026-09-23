@@ -1,27 +1,92 @@
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 
-const ICONS = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+const ICONS = {
+  success: <CheckCircle2 className="toast-icon-svg text-success" size={18} strokeWidth={2.2} />,
+  error: <AlertCircle className="toast-icon-svg text-danger" size={18} strokeWidth={2.2} />,
+  warning: <AlertTriangle className="toast-icon-svg text-warning" size={18} strokeWidth={2.2} />,
+  info: <Info className="toast-icon-svg text-info" size={18} strokeWidth={2.2} />,
+};
 
-export default function Toast({ id, message, type = 'info', onDismiss }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (ref.current) ref.current.style.animation = 'toastIn 0.3s ease forwards';
-  }, []);
+export function ToastItem({ toast, index, total, isHovered, onDismiss }) {
+  const { id, message, type = 'info' } = toast;
+  const reverseIndex = total - 1 - index; // 0 is top-most
+  const isTop = reverseIndex === 0;
+
+  // Sonner stack transformation calculation
+  let transformStyle = {};
+  if (isHovered) {
+    // Expanded view on hover
+    transformStyle = {
+      transform: `translateY(-${reverseIndex * 64}px) scale(1)`,
+      opacity: 1,
+      zIndex: 100 - reverseIndex,
+    };
+  } else {
+    // Stacked view
+    const scale = Math.max(0.82, 1 - reverseIndex * 0.06);
+    const translateY = -reverseIndex * 10;
+    const opacity = reverseIndex > 3 ? 0 : 1 - reverseIndex * 0.18;
+    transformStyle = {
+      transform: `translateY(${translateY}px) scale(${scale})`,
+      opacity: opacity,
+      zIndex: 100 - reverseIndex,
+      pointerEvents: isTop ? 'auto' : 'none',
+    };
+  }
+
   return (
-    <div ref={ref} className={`toast toast--${type}`} role="alert" aria-live="polite">
-      <span className="toast-icon">{ICONS[type]}</span>
-      <span className="toast-message">{message}</span>
-      <button className="toast-dismiss" onClick={() => onDismiss(id)} aria-label="Dismiss">✕</button>
+    <div
+      className={`sonner-toast sonner-toast--${type} ${isTop ? 'sonner-toast--top' : ''}`}
+      style={transformStyle}
+      role="alert"
+      aria-live="polite"
+    >
+      <div className="sonner-toast-content">
+        <div className="sonner-icon-wrap">{ICONS[type] || ICONS.info}</div>
+        <div className="sonner-message">{message}</div>
+      </div>
+      <button
+        className="sonner-close-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDismiss(id);
+        }}
+        aria-label="Dismiss notification"
+      >
+        <X size={14} />
+      </button>
     </div>
   );
 }
 
-export function ToastContainer({ toasts, onDismiss }) {
+export function ToastContainer({ toasts = [], onDismiss }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  if (!toasts || toasts.length === 0) return null;
+
   return (
-    <div className="toast-container" role="region" aria-label="Notifications">
-      {toasts.map(t => (
-        <Toast key={t.id} {...t} onDismiss={onDismiss} />
-      ))}
+    <div
+      className="sonner-toaster-container"
+      role="region"
+      aria-label="Notifications"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="sonner-toast-stack">
+        {toasts.map((toast, index) => (
+          <ToastItem
+            key={toast.id}
+            toast={toast}
+            index={index}
+            total={toasts.length}
+            isHovered={isHovered}
+            onDismiss={onDismiss}
+          />
+        ))}
+      </div>
     </div>
   );
 }
+
+export default ToastContainer;
