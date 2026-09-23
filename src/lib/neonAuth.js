@@ -21,11 +21,65 @@ export function checkIsAdminEmail(email) {
 }
 
 /**
- * Initiates Google OAuth with Neon Auth
+ * Initiates Google OAuth Sign-In
+ * First tries native Google Identity Services popup using GOOGLE_CLIENT_ID;
+ * Falls back to Neon Auth redirect if GIS is unavailable.
  */
 export async function signInWithGoogle() {
+  // Option 1: Native Google Identity Services OAuth2 Token Popup
+  if (typeof window !== 'undefined' && window.google?.accounts?.oauth2) {
+    return new Promise((resolve, reject) => {
+      try {
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: 'email profile openid',
+          callback: async (tokenResponse) => {
+            if (tokenResponse.error) {
+              console.warn('Google token error:', tokenResponse.error);
+              if (tokenResponse.error === 'popup_closed_by_user') {
+                return reject(new Error('Sign-in popup was closed. Please try again.'));
+              }
+              return reject(new Error(tokenResponse.error_description || tokenResponse.error));
+            }
+
+            try {
+              // Fetch user profile from Google with access token
+              const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+              });
+              const profile = await userInfoRes.json();
+              resolve({
+                profile: {
+                  email: profile.email,
+                  name: profile.name || profile.email?.split('@')[0],
+                  avatar: profile.picture,
+                },
+                token: tokenResponse.access_token,
+              });
+            } catch (fetchErr) {
+              reject(fetchErr);
+            }
+          },
+        });
+
+        client.requestAccessToken({ prompt: 'select_account' });
+      } catch (err) {
+        console.warn('GIS init failed, falling back to Neon Auth redirect:', err);
+        signInWithNeonRedirect().then(resolve).catch(reject);
+      }
+    });
+  }
+
+  // Option 2: Fall back to Neon Auth redirect
+  return signInWithNeonRedirect();
+}
+
+/**
+ * Fallback: Initiates Google OAuth via Neon Auth redirect
+ */
+export async function signInWithNeonRedirect() {
   if (!isNeonAuthLive) {
-    console.warn('Neon Auth base URL not configured. Running in simulation mode.');
+    console.warn('Neon Auth base URL not configured.');
     return { needsModal: true };
   }
 
@@ -52,7 +106,6 @@ export async function signInWithGoogle() {
 
     const data = await response.json();
     if (data?.url) {
-      // Redirect browser to Neon Auth Google initiation URL
       window.location.href = data.url;
       return { redirected: true };
     }

@@ -15,12 +15,23 @@ export function AuthProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingApproval, setPendingApproval] = useState(false);
   const [authProvider, setAuthProvider] = useState('local'); // 'local' | 'neon_google'
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
     let isMounted = true;
 
     async function initAuth() {
       try {
+        // Check for OAuth error in URL query
+        if (typeof window !== 'undefined') {
+          const urlParams = new URLSearchParams(window.location.search);
+          const urlError = urlParams.get('error_description') || urlParams.get('error');
+          if (urlError) {
+            setAuthError(`Google authentication error: ${urlError}`);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+        }
+
         // 1. Check Neon Auth active session first (handles Google OAuth redirect return)
         if (isNeonAuthLive) {
           const neonData = await getNeonSession();
@@ -59,7 +70,7 @@ export function AuthProvider({ children }) {
       const syncResult = await api.neonSync({
         email: email,
         name: neonUser.name || email.split('@')[0],
-        avatar: neonUser.image || (isAdmin ? '⚡' : '👷'),
+        avatar: neonUser.avatar || neonUser.image || (isAdmin ? '⚡' : '👷'),
       });
 
       if (syncResult?.token) {
@@ -88,7 +99,7 @@ export function AuthProvider({ children }) {
             id: `neon-${email}`,
             email: email,
             name: neonUser.name || email.split('@')[0],
-            avatar: neonUser.image || '⚡',
+            avatar: neonUser.avatar || neonUser.image || '⚡',
             role: 'admin',
             department: 'Management',
             isApproved: true,
@@ -136,6 +147,7 @@ export function AuthProvider({ children }) {
 
   const loginWithGoogle = async (customPayload = null) => {
     setIsLoading(true);
+    setAuthError('');
     try {
       if (customPayload && customPayload.email) {
         const email = customPayload.email.trim().toLowerCase();
@@ -173,7 +185,11 @@ export function AuthProvider({ children }) {
       }
 
       const result = await signInWithGoogle();
-      if (result.needsModal) {
+      if (result?.profile) {
+        await handleNeonGoogleUser(result.profile);
+        return { success: true };
+      }
+      if (result?.needsModal) {
         return { needsModal: true };
       }
       return result;
@@ -229,6 +245,7 @@ export function AuthProvider({ children }) {
         isAuthenticated: !!user,
         authProvider,
         isNeonAuthLive,
+        authError,
       }}
     >
       {children}
