@@ -4,13 +4,15 @@ import GoogleAuthModal from '../components/GoogleAuthModal.jsx';
 import { Zap, Mail, KeyRound, ArrowRight, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 export default function LoginScreen({ onToggle }) {
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogle, authError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
+
+  const displayedError = error || authError;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -74,10 +76,10 @@ export default function LoginScreen({ onToggle }) {
           <p className="login-subtitle">Sign in to your attendance operations portal</p>
         </div>
 
-        {error && (
+        {displayedError && (
           <div className="login-error-alert" role="alert">
             <AlertTriangle size={16} className="login-error-icon" />
-            <span>{error}</span>
+            <span>{displayedError}</span>
           </div>
         )}
 
