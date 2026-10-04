@@ -122,6 +122,7 @@ export const api = {
   getPendingUsers: () => request('/auth/pending'),
   approveUser: (id) => request(`/auth/approve/${id}`, { method: 'POST' }),
   rejectUser: (id) => request(`/auth/reject/${id}`, { method: 'POST' }),
+  deleteUser: (id) => request(`/auth/users/${id}`, { method: 'DELETE' }),
 
   // QR endpoints
   getCurrentQR: () => request('/qr-token/current'),

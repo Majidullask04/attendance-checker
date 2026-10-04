@@ -16,6 +16,7 @@ import {
   Calendar,
   X,
   ClipboardList,
+  Trash2,
 } from 'lucide-react';
 
 export default function Team({ store }) {
@@ -259,15 +260,30 @@ export default function Team({ store }) {
                         </span>
                       </td>
                       <td>
-                        <button
-                          className="btn-tiny"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelected(selected === emp.id ? null : emp.id);
-                          }}
-                        >
-                          {selected === emp.id ? 'Close' : 'Inspect'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            className="btn-tiny"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelected(selected === emp.id ? null : emp.id);
+                            }}
+                          >
+                            {selected === emp.id ? 'Close' : 'Inspect'}
+                          </button>
+                          <button
+                            className="btn-tiny"
+                            style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '6px' }}
+                            title="Remove User"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Are you sure you want to completely remove ${getEmployeeName(emp)}?`)) {
+                                store.deleteUser(emp.id);
+                              }
+                            }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -301,8 +317,21 @@ export default function Team({ store }) {
                     {emp.department} · <span className="font-mono text-muted">{emp.email}</span>
                   </div>
                 </div>
-                <div className={`status-chip status-chip--${emp.status}`}>
+                <div className={`status-chip status-chip--${emp.status}`} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   {emp.statusLabel || emp.status}
+                  <button
+                    className="btn-tiny"
+                    style={{ padding: '2px 4px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', marginLeft: '4px' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Are you sure you want to completely remove ${getEmployeeName(emp)}?`)) {
+                        store.deleteUser(emp.id);
+                      }
+                    }}
+                    title="Remove User"
+                  >
+                    <Trash2 size={12} />
+                  </button>
                 </div>
               </div>
 

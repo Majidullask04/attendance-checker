@@ -521,6 +521,25 @@ export function useAttendanceStore() {
     [addToast, loadAuditData, loadRecords, loadTeamData]
   );
 
+  // ── Delete User (Admin Only) ──────────────────────────────────────────────
+  const deleteUser = useCallback(
+    async (userId) => {
+      setIsLoading(true);
+      try {
+        await api.deleteUser(userId);
+        addToast('User permanently removed.', 'success');
+        if (authUser?.role === 'admin') {
+          await loadTeamData();
+        }
+      } catch (err) {
+        addToast(err.message || 'Failed to delete user', 'error');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [authUser?.role, addToast, loadTeamData]
+  );
+
   // ── Derived Data ──────────────────────────────────────────────────────────
   const myRecords = records;
   const today = new Date().toDateString();
@@ -574,6 +593,7 @@ export function useAttendanceStore() {
     endOT,
     downloadReportPDF,
     correctRecord,
+    deleteUser,
     loadRecords,
     loadTeamData,
     loadAuditData,
