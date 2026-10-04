@@ -88,7 +88,7 @@ export function isInvalidName(name) {
   if (trimmed.includes('@')) return true;
 
   // Technical placeholders
-  if (/^(unknown|null|undefined|anonymous|user|technician|staff|default|\[object Object\])$/i.test(trimmed)) return true;
+  if (/^(unknown|null|undefined|anonymous|user|technician|staff|technician staff|default|\[object Object\])$/i.test(trimmed)) return true;
 
   return false;
 }
