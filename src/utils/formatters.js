@@ -78,14 +78,17 @@ export function isInvalidName(name) {
   // Standard UUID format
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return true;
 
-  // Alphanumeric/hex hashes without spaces (20+ chars)
-  if (/^[0-9a-zA-Z_-]{20,}$/.test(trimmed)) return true;
+  // Alphanumeric/hex hashes without spaces (20+ chars), including Google avatar hashes
+  if (/^[0-9a-zA-Z_=\.-]{20,}$/.test(trimmed)) return true;
 
   // Pure numeric string (e.g. Google sub numeric ID)
   if (/^\d{6,}$/.test(trimmed)) return true;
 
   // Full email address mistakenly used as name
   if (trimmed.includes('@')) return true;
+
+  // URLs mistakenly saved as name (e.g., Google profile picture URLs)
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.includes('googleusercontent.com')) return true;
 
   // Technical placeholders
   if (/^(unknown|null|undefined|anonymous|user|technician|staff|technician staff|default|\[object Object\])$/i.test(trimmed)) return true;
