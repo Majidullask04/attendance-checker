@@ -81,7 +81,7 @@ export function isInvalidName(name) {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return true;
 
   // Alphanumeric/hex hashes without spaces (20+ chars), including Google avatar hashes
-  if (/^[0-9a-zA-Z_=\.-]{20,}$/.test(trimmed)) return true;
+  if (/^[0-9a-zA-Z_=.-]{20,}$/.test(trimmed)) return true;
 
   // Pure numeric string (e.g. Google sub numeric ID)
   if (/^\d{6,}$/.test(trimmed)) return true;
@@ -201,6 +201,15 @@ export function renderAvatar(avatar, fallback = '👤') {
       src: effectiveAvatar,
       alt: 'avatar',
       className: 'avatar-img',
+      style: {
+        width: '100%',
+        height: '100%',
+        maxWidth: '100%',
+        maxHeight: '100%',
+        objectFit: 'cover',
+        borderRadius: 'inherit',
+        display: 'block',
+      },
       onError: (e) => {
         // If the image fails to load, gracefully hide it
         e.currentTarget.style.display = 'none';

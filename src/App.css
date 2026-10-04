@@ -101,10 +101,20 @@
 }
 
 .header-user-avatar {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  max-height: 28px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  overflow: hidden !important;
+  flex-shrink: 0;
 }
 
 .header-user-info-text {
@@ -1156,6 +1166,106 @@
   font-size: 0.85rem;
 }
 
+/* ── Dashboard Team Status Today (Quick View) ─────────────────── */
+.team-quick {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--space-xl);
+}
+
+.team-quick-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+  gap: var(--space-sm);
+}
+
+.team-quick-header .section-title {
+  margin-bottom: 0;
+}
+
+.team-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-md);
+}
+
+.team-quick-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.team-quick-card:hover {
+  border-color: var(--color-border);
+  background: var(--color-bg-hover);
+  transform: translateY(-1px);
+}
+
+.team-quick-card--flagged {
+  border-color: hsla(0, 72%, 58%, 0.4);
+  background: hsla(0, 72%, 58%, 0.05);
+}
+
+.team-quick-avatar {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  max-width: 38px;
+  max-height: 38px;
+  border-radius: 50%;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+  overflow: hidden !important;
+}
+
+.team-quick-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.team-quick-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-quick-dept {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.team-quick-time {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  margin-left: 6px;
+}
+
 /* ── CheckIn Layout & Action Triggers ────────────────────────── */
 .checkin-layout {
   display: grid;
@@ -2171,6 +2281,23 @@
   margin-bottom: var(--space-md);
 }
 
+.team-card-avatar {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  max-width: 38px;
+  max-height: 38px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  overflow: hidden !important;
+}
+
 .team-card-times {
   display: flex;
   align-items: center;
@@ -2786,6 +2913,8 @@
 .google-account-avatar img {
   width: 100% !important;
   height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
   object-fit: cover !important;
   border-radius: inherit !important;
   display: block !important;
