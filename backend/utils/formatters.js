@@ -14,8 +14,8 @@ export function isInvalidName(name) {
   // UUID pattern
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return true;
 
-  // Hex or alphanumeric hashes without spaces (20+ chars)
-  if (/^[0-9a-zA-Z_-]{20,}$/.test(trimmed)) return true;
+  // Hex or alphanumeric hashes/tokens without spaces (20+ chars), including Google avatar hashes
+  if (/^[0-9a-zA-Z_=\.-]{20,}$/.test(trimmed)) return true;
 
   // Pure numeric string (e.g. Google sub numeric ID)
   if (/^\d{6,}$/.test(trimmed)) return true;
