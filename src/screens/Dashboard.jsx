@@ -375,12 +375,15 @@ export default function Dashboard({ store }) {
                 className={`team-quick-card ${
                   emp.flagged ? 'team-quick-card--flagged' : ''
                 } interactive-item`}
+                onClick={() => setActiveScreen('team')}
+                role="button"
+                tabIndex={0}
               >
                 <div className="team-quick-avatar">{renderAvatar(emp.avatar, '👤')}</div>
                 <div className="team-quick-info">
                   <div className="team-quick-name">{getEmployeeName(emp)}</div>
                   <div className="team-quick-dept">
-                    {emp.department} · {emp.email}
+                    {emp.department ? `${emp.department} · ` : ''}{emp.email}
                   </div>
                 </div>
                 <div className={`status-pill status-pill--${emp.status}`}>
@@ -397,6 +400,9 @@ export default function Dashboard({ store }) {
                 )}
               </div>
             ))}
+            {teamSummary.length === 0 && (
+              <div className="activity-empty">No team members registered yet</div>
+            )}
           </div>
         </div>
       )}
