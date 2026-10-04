@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001/api' : '/api');
 
 // ── Offline Queue ──────────────────────────────────────────────────────────
 const OFFLINE_QUEUE_KEY = 'attendance_offline_queue';
@@ -21,11 +21,9 @@ function clearOfflineQueue() {
   localStorage.removeItem(OFFLINE_QUEUE_KEY);
 }
 
-// ── Core Request Handler ───────────────────────────────────────────────────
-async function request(path, options = {}) {
+// ── Core Request Handler (with automatic retry for Render cold starts) ─────
+async function request(path, options = {}, retries = 2, delay = 2000) {
   const url = `${API_BASE}${path}`;
-  // SECURITY NOTE: localStorage is used for JWT to support static file hosting.
-  // In a production deployment with a custom domain, migrate to httpOnly cookies.
   const token = localStorage.getItem('attendance_token');
 
   const headers = {
@@ -34,16 +32,30 @@ async function request(path, options = {}) {
     ...options.headers,
   };
 
-  const res = await fetch(url, {
-    ...options,
-    headers,
-  });
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers,
+    });
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || `Request failed with status ${res.status}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Request failed with status ${res.status}`);
+    }
+    return data;
+  } catch (err) {
+    const isNetworkError = !navigator.onLine ||
+                           err instanceof TypeError ||
+                           err.message === 'Failed to fetch' ||
+                           err.message.includes('NetworkError');
+
+    if (isNetworkError && retries > 0) {
+      console.warn(`Network error reaching backend (${err.message}). Retrying in ${delay}ms... (${retries} attempts left)`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return request(path, options, retries - 1, delay * 2);
+    }
+    throw err;
   }
-  return data;
 }
 
 // ── Offline-Aware Check-In/Out ─────────────────────────────────────────────
@@ -104,6 +116,7 @@ export const api = {
   login: (email, password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   neonSync: (payload) => request('/auth/neon-sync', { method: 'POST', body: JSON.stringify(payload) }),
   me: () => request('/auth/me'),
+  updateProfile: (payload) => request('/auth/profile', { method: 'PUT', body: JSON.stringify(payload) }),
 
   // Admin approval endpoints
   getPendingUsers: () => request('/auth/pending'),

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">attendance-checker</string>
+    <string name="title_activity_main">attendance-checker</string>
+    <string name="package_name">com.majidulla.app</string>
+    <string name="custom_url_scheme">com.majidulla.app</string>
+</resources>

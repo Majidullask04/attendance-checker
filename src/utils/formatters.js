@@ -65,52 +65,115 @@ export function groupRecordsByDay(records = []) {
 }
 
 /**
+ * Checks if a string represents an internal hash, token, ID, or invalid name.
+ */
+export function isInvalidName(name) {
+  if (!name || typeof name !== 'string') return true;
+  const trimmed = name.trim();
+  if (trimmed.length < 2) return true;
+
+  // Technical prefixes
+  if (/^(usr_|tok_|emp-|dev-|neon-|rec-|loc-|session_|auth_)/i.test(trimmed)) return true;
+
+  // Standard UUID format
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) return true;
+
+  // Alphanumeric/hex hashes without spaces (20+ chars)
+  if (/^[0-9a-zA-Z_-]{20,}$/.test(trimmed)) return true;
+
+  // Pure numeric string (e.g. Google sub numeric ID)
+  if (/^\d{6,}$/.test(trimmed)) return true;
+
+  // Full email address mistakenly used as name
+  if (trimmed.includes('@')) return true;
+
+  // Technical placeholders
+  if (/^(unknown|null|undefined|anonymous|user|technician|staff|default|\[object Object\])$/i.test(trimmed)) return true;
+
+  return false;
+}
+
+/**
+ * Derives or sanitizes a human-readable employee name.
+ * If rawName is valid, it formats it cleanly (Title Case).
+ * If rawName is missing or an unknown ID/hash, it extracts and capitalizes the name from email.
+ */
+export function cleanUserName(rawName, email) {
+  if (rawName && typeof rawName === 'string' && !isInvalidName(rawName)) {
+    const cleaned = rawName.trim().replace(/\s+/g, ' ');
+    if (cleaned.length >= 2) {
+      // If uppercase or lowercase, convert to Title Case
+      if (cleaned === cleaned.toLowerCase() || cleaned === cleaned.toUpperCase()) {
+        return cleaned
+          .split(' ')
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(' ');
+      }
+      return cleaned;
+    }
+  }
+
+  // Derive human-readable name from email
+  if (email && typeof email === 'string' && email.includes('@')) {
+    const lowerEmail = email.toLowerCase().trim();
+    if (lowerEmail === 'mrelectricalworks02@gmail.com') {
+      return 'Mr. Electric (Admin)';
+    }
+
+    const usernamePart = lowerEmail.split('@')[0];
+    const words = usernamePart
+      .replace(/[._\d-]+/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length > 0) {
+      const formatted = words
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+      if (formatted.length >= 2) return formatted;
+    }
+  }
+
+  return 'Technician Staff';
+}
+
+/**
  * Resolves a human-readable employee name from any record, team list, or auth user.
  * Strips unknown ID hashes, numbers, or messy tokens and produces clean names.
  */
 export function getEmployeeName(recordOrUser, teamMembers = [], currentUser = null) {
-  if (!recordOrUser) return 'Team Member';
+  if (!recordOrUser) return 'Technician Staff';
 
-  // 1. Explicit name property
+  // 1. Explicit name property if valid
   const directName = recordOrUser.userName || recordOrUser.name || recordOrUser.user_name || recordOrUser.displayName;
-  if (directName && !directName.startsWith('usr_') && !directName.startsWith('tok_') && directName.length < 50) {
-    return directName;
+  const targetEmail = recordOrUser.userEmail || recordOrUser.email || recordOrUser.user?.email;
+
+  if (directName && !isInvalidName(directName)) {
+    return cleanUserName(directName, targetEmail);
   }
 
   const targetId = recordOrUser.user_id || recordOrUser.userId || recordOrUser.id;
-  const targetEmail = recordOrUser.userEmail || recordOrUser.email || recordOrUser.user?.email;
 
   // 2. Lookup in teamMembers array
   if (Array.isArray(teamMembers) && teamMembers.length > 0) {
     const match = teamMembers.find(
       (m) => (targetId && m.id === targetId) || (targetEmail && m.email?.toLowerCase() === targetEmail.toLowerCase())
     );
-    if (match && match.name) return match.name;
+    if (match && match.name && !isInvalidName(match.name)) {
+      return cleanUserName(match.name, match.email);
+    }
   }
 
   // 3. Match with currentUser
-  if (currentUser && ((targetId && currentUser.id === targetId) || (targetEmail && currentUser.email === targetEmail))) {
-    if (currentUser.name) return currentUser.name;
+  if (currentUser && ((targetId && currentUser.id === targetId) || (targetEmail && currentUser.email?.toLowerCase() === targetEmail.toLowerCase()))) {
+    if (currentUser.name && !isInvalidName(currentUser.name)) {
+      return cleanUserName(currentUser.name, currentUser.email);
+    }
   }
 
   // 4. Clean up email into a recognizable human name
-  if (targetEmail && targetEmail.includes('@')) {
-    if (targetEmail.toLowerCase() === 'mrelectricalworks02@gmail.com') {
-      return 'Mr. Electric (Admin)';
-    }
-    const usernamePart = targetEmail.split('@')[0];
-    const cleaned = usernamePart
-      .replace(/[._\d-]+/g, ' ')
-      .trim()
-      .split(' ')
-      .filter(Boolean)
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(' ');
-    if (cleaned.length >= 2) return cleaned;
-  }
-
-  // 5. Friendly fallback instead of unknown numbers
-  return 'Technician / Staff';
+  return cleanUserName(null, targetEmail);
 }
 
 /**
@@ -125,4 +188,5 @@ export function getEmployeeAvatar(recordOrUser, teamMembers = []) {
   }
   return '⚡';
 }
+
 

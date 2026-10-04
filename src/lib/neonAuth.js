@@ -20,17 +20,64 @@ export function checkIsAdminEmail(email) {
   return ADMIN_EMAILS.includes(email.toLowerCase().trim());
 }
 
+import { cleanUserName } from '../utils/formatters.js';
+
+
+export function decodeGoogleJwt(jwt) {
+  if (!jwt || typeof jwt !== 'string') return null;
+  try {
+    const parts = jwt.split('.');
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * Waits for Google Identity Services SDK to initialize if still loading.
+ */
+function waitForGoogleAccounts(timeoutMs = 1200) {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  if (window.google?.accounts?.oauth2) return Promise.resolve(window.google.accounts.oauth2);
+
+  return new Promise((resolve) => {
+    const interval = 80;
+    let elapsed = 0;
+    const timer = setInterval(() => {
+      elapsed += interval;
+      if (window.google?.accounts?.oauth2) {
+        clearInterval(timer);
+        resolve(window.google.accounts.oauth2);
+      } else if (elapsed >= timeoutMs) {
+        clearInterval(timer);
+        resolve(null);
+      }
+    }, interval);
+  });
+}
+
 /**
  * Initiates Google OAuth Sign-In
  * First tries native Google Identity Services popup using GOOGLE_CLIENT_ID;
  * Falls back to Neon Auth redirect if GIS is unavailable.
  */
 export async function signInWithGoogle() {
+  const oauth2 = await waitForGoogleAccounts();
+
   // Option 1: Native Google Identity Services OAuth2 Token Popup
-  if (typeof window !== 'undefined' && window.google?.accounts?.oauth2) {
+  if (oauth2) {
     return new Promise((resolve, reject) => {
       try {
-        const client = window.google.accounts.oauth2.initTokenClient({
+        const client = oauth2.initTokenClient({
           client_id: GOOGLE_CLIENT_ID,
           scope: 'email profile openid',
           callback: async (tokenResponse) => {
@@ -43,20 +90,60 @@ export async function signInWithGoogle() {
             }
 
             try {
-              // Fetch user profile from Google with access token
-              const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-              });
-              const profile = await userInfoRes.json();
+              let profile = null;
+              const accessToken = tokenResponse.access_token;
+
+              // 1. Fetch user profile from Google with access token
+              try {
+                const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                });
+                if (res.ok) profile = await res.json();
+              } catch (e) {
+                console.warn('v3 userinfo fetch failed:', e);
+              }
+
+              // 2. Fallback to OpenID Connect userinfo endpoint if needed
+              if (!profile || !profile.email) {
+                try {
+                  const res = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+                    headers: { Authorization: `Bearer ${accessToken}` },
+                  });
+                  if (res.ok) profile = await res.json();
+                } catch (e) {
+                  console.warn('OIDC userinfo fetch failed:', e);
+                }
+              }
+
+              // 3. Fallback to decoding id_token if available
+              const idTokenPayload = tokenResponse.id_token ? decodeGoogleJwt(tokenResponse.id_token) : null;
+
+              const email = (profile?.email || idTokenPayload?.email || '').trim().toLowerCase();
+              if (!email) {
+                throw new Error('Google did not return an authorized email address.');
+              }
+
+              // Scrape human name from Google account profile fields
+              const rawName =
+                profile?.name ||
+                [profile?.given_name, profile?.family_name].filter(Boolean).join(' ') ||
+                profile?.displayName ||
+                idTokenPayload?.name ||
+                [idTokenPayload?.given_name, idTokenPayload?.family_name].filter(Boolean).join(' ');
+
+              const cleanName = cleanUserName(rawName, email);
+              const avatar = profile?.picture || idTokenPayload?.picture || '👷';
+
               resolve({
                 profile: {
-                  email: profile.email,
-                  name: profile.name || profile.email?.split('@')[0],
-                  avatar: profile.picture,
+                  email,
+                  name: cleanName,
+                  avatar,
                 },
-                token: tokenResponse.access_token,
+                token: accessToken,
               });
             } catch (fetchErr) {
+              console.error('Google profile extraction failed:', fetchErr);
               reject(fetchErr);
             }
           },
@@ -73,6 +160,7 @@ export async function signInWithGoogle() {
   // Option 2: Fall back to Neon Auth redirect
   return signInWithNeonRedirect();
 }
+
 
 /**
  * Fallback: Initiates Google OAuth via Neon Auth redirect
@@ -134,11 +222,19 @@ export async function getNeonSession() {
 
     if (!response.ok) return null;
     const data = await response.json();
+    if (!data) return null;
+    
+    // Normalize user object location
+    const user = data.user || data.session?.user;
+    if (data.session && user) {
+      return { ...data, user };
+    }
     return data?.session ? data : null;
   } catch (_err) {
     return null;
   }
 }
+
 
 /**
  * Signs out from Neon Auth

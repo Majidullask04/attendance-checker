@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, ArrowRight, ShieldCheck, UserPlus } from 'lucide-react';
 import { checkIsAdminEmail } from '../lib/neonAuth.js';
+import { cleanUserName } from '../utils/formatters.js';
 
 const PRESET_GOOGLE_ACCOUNTS = [
   {
@@ -49,12 +50,12 @@ export default function GoogleAuthModal({ isOpen, onClose, onSelectAccount }) {
     e.preventDefault();
     if (!customEmail.trim()) return;
     const email = customEmail.trim();
-    const name = customName.trim() || email.split('@')[0].replace(/[._\d-]+/g, ' ');
+    const name = cleanUserName(customName, email);
     const isAdmin = checkIsAdminEmail(email);
 
     onSelectAccount({
       email,
-      name: name.charAt(0).toUpperCase() + name.slice(1),
+      name,
       avatar: isAdmin ? '⚡' : '👷',
       department: isAdmin ? 'Executive Admin' : 'Field Operations',
     });
