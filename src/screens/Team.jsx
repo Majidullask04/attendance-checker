@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { formatTime, formatDuration, getEmployeeName } from '../utils/formatters.js';
+import { formatTime, formatDuration, getEmployeeName, renderAvatar } from '../utils/formatters.js';
 import { api } from '../api/client.js';
 import {
   Download,
@@ -200,7 +200,7 @@ export default function Team({ store }) {
                     >
                       <td>
                         <div className="emp-cell">
-                          <span className="emp-avatar">{emp.avatar || '👷'}</span>
+                          <span className="emp-avatar">{renderAvatar(emp.avatar, '👷')}</span>
                           <div>
                             <div className="emp-name">{getEmployeeName(emp)}</div>
                             <div className="emp-email font-mono">{emp.email}</div>
@@ -310,7 +310,7 @@ export default function Team({ store }) {
             >
               <div className={`team-card-status-bar status-bar--${emp.status}`} />
               <div className="team-card-top">
-                <div className="team-card-avatar">{emp.avatar || '👷'}</div>
+                <div className="team-card-avatar">{renderAvatar(emp.avatar, '👷')}</div>
                 <div className="team-card-info">
                   <div className="team-card-name">{getEmployeeName(emp)}</div>
                   <div className="team-card-dept">

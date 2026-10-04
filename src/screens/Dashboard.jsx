@@ -1,6 +1,6 @@
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useTimer } from '../hooks/useTimer.js';
-import { formatTime, formatDuration, getWeekDates, getEmployeeName, getEmployeeAvatar } from '../utils/formatters.js';
+import { formatTime, formatDuration, getWeekDates, getEmployeeName, getEmployeeAvatar, renderAvatar } from '../utils/formatters.js';
 import DayTimeline from '../components/DayTimeline.jsx';
 import {
   Users,
@@ -376,7 +376,7 @@ export default function Dashboard({ store }) {
                   emp.flagged ? 'team-quick-card--flagged' : ''
                 } interactive-item`}
               >
-                <div className="team-quick-avatar">{emp.avatar || '👤'}</div>
+                <div className="team-quick-avatar">{renderAvatar(emp.avatar, '👤')}</div>
                 <div className="team-quick-info">
                   <div className="team-quick-name">{getEmployeeName(emp)}</div>
                   <div className="team-quick-dept">

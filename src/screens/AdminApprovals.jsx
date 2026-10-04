@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useAttendanceStore } from '../store/useStore';
-import { getEmployeeName } from '../utils/formatters';
+import { getEmployeeName, renderAvatar } from '../utils/formatters';
 import {
   CheckCircle2,
   XCircle,
@@ -104,7 +104,7 @@ export default function AdminApprovals() {
                 <tr key={u.id} className="interactive-item">
                   <td>
                     <div className="user-cell">
-                      <div className="user-avatar">{u.avatar || '👤'}</div>
+                      <div className="user-avatar">{renderAvatar(u.avatar, '👤')}</div>
                       <div>
                         <div className="user-name">{getEmployeeName(u)}</div>
                         <div className="user-email font-mono">{u.email}</div>

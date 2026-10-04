@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { getEmployeeName } from '../utils/formatters';
+import { getEmployeeName, renderAvatar } from '../utils/formatters';
 import {
   LayoutDashboard,
   QrCode,
@@ -125,7 +125,7 @@ export default function Sidebar({
         {/* User Identity Card */}
         {currentUser && (
           <div className="sidebar-user">
-            <div className="sidebar-user-avatar">{currentUser.avatar || '👤'}</div>
+            <div className="sidebar-user-avatar">{renderAvatar(currentUser.avatar, '👤')}</div>
             {(!collapsed || isMobileOpen) && (
               <div className="sidebar-user-info">
                 <div className="sidebar-user-name" title={getEmployeeName(currentUser)}>
