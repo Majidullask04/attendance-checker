@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { getEmployeeName } from '../utils/formatters';
 import {
   LayoutDashboard,
   QrCode,
@@ -127,8 +128,8 @@ export default function Sidebar({
             <div className="sidebar-user-avatar">{currentUser.avatar || '👤'}</div>
             {(!collapsed || isMobileOpen) && (
               <div className="sidebar-user-info">
-                <div className="sidebar-user-name" title={currentUser.name}>
-                  {currentUser.name}
+                <div className="sidebar-user-name" title={getEmployeeName(currentUser)}>
+                  {getEmployeeName(currentUser)}
                 </div>
                 <div className="sidebar-user-role-wrap">
                   <span className={`role-badge ${isAdmin ? 'role-badge--admin' : 'role-badge--user'}`}>

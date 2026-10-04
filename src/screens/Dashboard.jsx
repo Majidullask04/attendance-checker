@@ -229,7 +229,7 @@ export default function Dashboard({ store }) {
       <div className="screen-header">
         <div>
           <h1 className="screen-title">
-            {isAdmin ? 'Operations Dashboard' : `Welcome, ${user?.name || 'Technician'}`}
+            {isAdmin ? 'Operations Dashboard' : `Welcome, ${getEmployeeName(user)}`}
           </h1>
           <p className="screen-sub">
             {new Date().toLocaleDateString('en-IN', {
@@ -378,7 +378,7 @@ export default function Dashboard({ store }) {
               >
                 <div className="team-quick-avatar">{emp.avatar || '👤'}</div>
                 <div className="team-quick-info">
-                  <div className="team-quick-name">{emp.name}</div>
+                  <div className="team-quick-name">{getEmployeeName(emp)}</div>
                   <div className="team-quick-dept">
                     {emp.department} · {emp.email}
                   </div>

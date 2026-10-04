@@ -4,8 +4,17 @@ import PDFDocument from 'pdfkit';
 import db from '../db.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { POLICY, getDayBounds, getZonedDateTime, evaluateScanStatus, timeToMinutes } from '../config/policy.js';
+import { cleanUserName } from '../utils/formatters.js';
 
 const router = Router();
+
+function sanitizeRecord(record) {
+  if (!record) return record;
+  return {
+    ...record,
+    userName: cleanUserName(record.userName, record.userEmail),
+  };
+}
 
 // Helper: get records for user on a specific calendar day in policy timezone
 async function getDayUserRecords(userId, dateStr = null) {
@@ -145,7 +154,7 @@ router.post('/check-in', async (req, res) => {
     );
     res.json({
       success: true,
-      record,
+      record: sanitizeRecord(record),
       timing: scanEvaluation,
       message: scanEvaluation === 'late' ? 'Checked in (marked Late after 09:00 AM)' : 'Checked in on-time (Present)',
     });
@@ -224,7 +233,7 @@ router.post('/check-out', async (req, res) => {
        WHERE ar.id = $1`,
       [recordId]
     );
-    res.json({ success: true, record, message: 'Checked out successfully. Shift ended.' });
+    res.json({ success: true, record: sanitizeRecord(record), message: 'Checked out successfully. Shift ended.' });
   } catch (err) {
     console.error('Check-out error:', err);
     res.status(500).json({ error: 'Internal server error during check-out processing.' });
@@ -291,7 +300,7 @@ router.post('/break', async (req, res) => {
          WHERE ar.id = $1`,
         [recordId]
       );
-      return res.json({ success: true, record, message: 'Break started. Timer running (30-40 min).' });
+      return res.json({ success: true, record: sanitizeRecord(record), message: 'Break started. Timer running (30-40 min).' });
     }
 
     if (action === 'end') {
@@ -349,7 +358,7 @@ router.post('/break', async (req, res) => {
          WHERE ar.id = $1`,
         [recordId]
       );
-      return res.json({ success: true, record, message: 'Break ended via QR scan. Shift resumed!' });
+      return res.json({ success: true, record: sanitizeRecord(record), message: 'Break ended via QR scan. Shift resumed!' });
     }
   } catch (err) {
     console.error('Break action error:', err);
@@ -434,7 +443,7 @@ router.post('/ot', async (req, res) => {
     );
     res.json({
       success: true,
-      record,
+      record: sanitizeRecord(record),
       message: action === 'start' ? 'Overtime started! Extra work timer is running.' : 'Overtime session stopped.',
     });
   } catch (err) {
@@ -592,7 +601,7 @@ router.get('/records', async (req, res) => {
          ORDER BY ar.recorded_at DESC`,
         [targetId, bounds.from, bounds.to]
       );
-      return res.json({ records: rows, date: bounds.dateString });
+      return res.json({ records: rows.map(sanitizeRecord), date: bounds.dateString });
     }
 
     const rows = await db.allAsync(
@@ -604,7 +613,7 @@ router.get('/records', async (req, res) => {
        LIMIT 200`,
       [targetId]
     );
-    res.json({ records: rows });
+    res.json({ records: rows.map(sanitizeRecord) });
   } catch (err) {
     console.error('Error fetching records:', err);
     res.status(500).json({ error: 'Failed to retrieve attendance records.' });
@@ -740,6 +749,7 @@ async function computeTeamAttendance(dateInput = null) {
 
     return {
       ...u,
+      name: cleanUserName(u.name, u.email),
       checkInTime,
       checkOutTime,
       breakStartTime,
@@ -902,7 +912,7 @@ router.get('/report/pdf', requireAdmin, async (req, res) => {
       doc.rect(36, curY, doc.page.width - 72, 22).fill(rowBg);
 
       doc.fillColor('#0f172a').fontSize(8).font('Helvetica-Bold');
-      doc.text(emp.name || emp.email, 42, curY + 6, { width: 130, ellipsis: true });
+      doc.text(cleanUserName(emp.name, emp.email), 42, curY + 6, { width: 130, ellipsis: true });
 
       doc.fillColor('#64748b').font('Helvetica');
       doc.text(emp.department || 'Field', 175, curY + 6, { width: 70, ellipsis: true });
@@ -959,7 +969,7 @@ router.get('/audit', requireAdmin, async (req, res) => {
       ORDER BY ar.recorded_at DESC
       LIMIT 100
     `);
-    res.json({ records: rows });
+    res.json({ records: rows.map(sanitizeRecord) });
   } catch (err) {
     console.error('Error fetching audit log:', err);
     res.status(500).json({ error: 'Failed to retrieve audit ledger.' });

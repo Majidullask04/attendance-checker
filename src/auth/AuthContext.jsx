@@ -7,8 +7,10 @@ import {
   checkIsAdminEmail,
   isNeonAuthLive,
 } from '../lib/neonAuth.js';
+import { cleanUserName } from '../utils/formatters.js';
 
 const AuthContext = createContext(null);
+
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -65,12 +67,17 @@ export function AuthProvider({ children }) {
     const email = (neonUser.email || '').trim().toLowerCase();
     const isAdmin = checkIsAdminEmail(email);
 
+    // Scrape and clean user name from Google / Neon profile
+    const rawName = neonUser.name || neonUser.displayName || neonUser.user_name || neonUser.fullName;
+    const cleanName = cleanUserName(rawName, email);
+    const avatar = neonUser.avatar || neonUser.image || neonUser.picture || (isAdmin ? '⚡' : '👷');
+
     try {
       // Sync with application backend to verify DB record and approval status
       const syncResult = await api.neonSync({
         email: email,
-        name: neonUser.name || email.split('@')[0],
-        avatar: neonUser.avatar || neonUser.image || (isAdmin ? '⚡' : '👷'),
+        name: cleanName,
+        avatar: avatar,
       });
 
       if (syncResult?.token) {
@@ -79,6 +86,7 @@ export function AuthProvider({ children }) {
 
       const formattedUser = {
         ...syncResult.user,
+        name: cleanUserName(syncResult.user?.name || cleanName, email),
         role: isAdmin ? 'admin' : (syncResult.user?.role || 'user'),
         isAdminVerified: isAdmin,
         authProvider: 'neon_google',
@@ -98,8 +106,8 @@ export function AuthProvider({ children }) {
           const fallbackAdmin = {
             id: `neon-${email}`,
             email: email,
-            name: neonUser.name || email.split('@')[0],
-            avatar: neonUser.avatar || neonUser.image || '⚡',
+            name: cleanName,
+            avatar: avatar || '⚡',
             role: 'admin',
             department: 'Management',
             isApproved: true,
@@ -116,6 +124,7 @@ export function AuthProvider({ children }) {
     }
   };
 
+
   const checkLocalToken = () => {
     const token = localStorage.getItem('attendance_token');
     if (token) {
@@ -125,6 +134,7 @@ export function AuthProvider({ children }) {
             const isAdmin = checkIsAdminEmail(data.user.email) || data.user.role === 'admin';
             setUser({
               ...data.user,
+              name: cleanUserName(data.user?.name, data.user?.email),
               role: isAdmin ? 'admin' : 'user',
               isAdminVerified: isAdmin,
             });
@@ -152,11 +162,12 @@ export function AuthProvider({ children }) {
       if (customPayload && customPayload.email) {
         const email = customPayload.email.trim().toLowerCase();
         const isAdmin = checkIsAdminEmail(email);
+        const cleanName = cleanUserName(customPayload.name, email);
 
         try {
           const syncResult = await api.neonSync({
             email: email,
-            name: customPayload.name || email.split('@')[0],
+            name: cleanName,
             avatar: customPayload.avatar || (isAdmin ? '⚡' : '👷'),
           });
 
@@ -166,6 +177,7 @@ export function AuthProvider({ children }) {
 
           const simUser = {
             ...syncResult.user,
+            name: cleanUserName(syncResult.user?.name || cleanName, email),
             role: isAdmin ? 'admin' : 'user',
             isAdminVerified: isAdmin,
             authProvider: 'neon_google',
@@ -208,6 +220,7 @@ export function AuthProvider({ children }) {
       const isAdmin = checkIsAdminEmail(data.user.email) || data.user.role === 'admin';
       setUser({
         ...data.user,
+        name: cleanUserName(data.user?.name, data.user?.email),
         role: isAdmin ? 'admin' : 'user',
         isAdminVerified: isAdmin,
       });

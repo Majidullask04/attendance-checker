@@ -22,10 +22,15 @@ const parseOrigins = (val) =>
     .filter(Boolean);
 
 const devOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'];
-const allowedOrigins =
-  process.env.NODE_ENV === 'production'
-    ? parseOrigins(FRONTEND_URL)
-    : [...new Set([...parseOrigins(FRONTEND_URL), ...devOrigins])];
+const defaultProductionOrigins = [
+  'https://attendance-checker-p9qd.onrender.com',
+  'https://attendance-checker-dun.vercel.app',
+];
+const allowedOrigins = [
+  ...parseOrigins(FRONTEND_URL),
+  ...defaultProductionOrigins,
+  ...devOrigins,
+];
 
 // ── Security: Force HTTPS in production ──────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {
@@ -49,7 +54,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'", ...allowedOrigins],
+      connectSrc: ["'self'", "https://attendance-checker-p9qd.onrender.com", ...allowedOrigins],
     },
   },
 }));
@@ -62,8 +67,19 @@ app.use(
       if (!origin) return callback(null, true);
       const normalized = origin.replace(/\/+$/, '');
       if (allowedOrigins.includes(normalized)) return callback(null, true);
-      // Allow any Vercel preview/production domain
-      if (origin && origin.match(/^https:\/\/.*\.vercel\.app$/)) return callback(null, true);
+      // Allow any Render or Vercel domain, or mobile app origins
+      if (
+        origin && (
+          origin.match(/^https:\/\/.*\.onrender\.com$/) ||
+          origin.match(/^https:\/\/.*\.vercel\.app$/) ||
+          origin.startsWith('capacitor://') ||
+          origin.startsWith('ionic://') ||
+          origin.startsWith('http://localhost') ||
+          origin.startsWith('https://localhost')
+        )
+      ) {
+        return callback(null, true);
+      }
       return callback(new Error(`CORS blocked: origin ${origin} is not in the allowed list`));
     },
     credentials: true,

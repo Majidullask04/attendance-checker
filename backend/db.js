@@ -1,6 +1,7 @@
 import pkg from 'pg';
 const { Pool } = pkg;
 import { randomUUID } from 'crypto';
+import { isInvalidName, cleanUserName } from './utils/formatters.js';
 
 const useDatabaseSsl = process.env.DATABASE_SSL === 'true';
 
@@ -147,6 +148,24 @@ async function startup() {
     if (result.changes > 0) console.log(`Cleaned up ${result.changes} expired used_tokens rows`);
   } catch (err) {
     console.error('used_tokens cleanup error:', err.message);
+  }
+
+  // Auto-heal existing user names in DB (sanitize any usr_..., tok_..., emp-..., numeric IDs, or emails)
+  try {
+    const allUsers = await db.allAsync(`SELECT id, name, email FROM users`);
+    let healedCount = 0;
+    for (const u of (allUsers || [])) {
+      if (isInvalidName(u.name)) {
+        const cleaned = cleanUserName(u.name, u.email);
+        await db.runAsync(`UPDATE users SET name = $1 WHERE id = $2`, [cleaned, u.id]);
+        healedCount++;
+      }
+    }
+    if (healedCount > 0) {
+      console.log(`Auto-healed ${healedCount} user accounts with clean human names`);
+    }
+  } catch (healErr) {
+    console.warn('Startup name auto-heal check error:', healErr.message);
   }
 }
 

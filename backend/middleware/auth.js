@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import * as jose from 'jose';
 import db from '../db.js';
+import { cleanUserName } from '../utils/formatters.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'mrelectric_secure_jwt_token_key_2026_dev';
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'mrelectricalworks02@gmail.com').toLowerCase();
@@ -22,7 +23,7 @@ export function signToken(user) {
       id: user.id,
       email: user.email,
       role: user.role,
-      name: user.name,
+      name: cleanUserName(user.name, user.email),
       department: user.department,
       avatar: user.avatar,
       deviceId: user.device_id || user.deviceId,
@@ -44,6 +45,9 @@ export async function verifyToken(req, res, next) {
   // 1. Try verifying with local JWT_SECRET first
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded) {
+      decoded.name = cleanUserName(decoded.name, decoded.email);
+    }
     req.user = decoded;
     return next();
   } catch (_localErr) {
@@ -68,7 +72,7 @@ export async function verifyToken(req, res, next) {
       req.user = {
         id: dbUser ? dbUser.id : (payload.sub || `neon-${email}`),
         email: email,
-        name: dbUser ? dbUser.name : (payload.name || email.split('@')[0]),
+        name: cleanUserName(dbUser ? dbUser.name : (payload.name || payload.given_name), email),
         role: isAdmin ? 'admin' : (dbUser?.role || 'user'),
         department: dbUser?.department || 'Electrical',
         avatar: dbUser?.avatar || (isAdmin ? '👑' : '👷'),

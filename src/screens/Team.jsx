@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { formatTime, formatDuration } from '../utils/formatters.js';
+import { formatTime, formatDuration, getEmployeeName } from '../utils/formatters.js';
 import { api } from '../api/client.js';
 import {
   Download,
@@ -201,7 +201,7 @@ export default function Team({ store }) {
                         <div className="emp-cell">
                           <span className="emp-avatar">{emp.avatar || '👷'}</span>
                           <div>
-                            <div className="emp-name">{emp.name}</div>
+                            <div className="emp-name">{getEmployeeName(emp)}</div>
                             <div className="emp-email font-mono">{emp.email}</div>
                           </div>
                         </div>
@@ -296,7 +296,7 @@ export default function Team({ store }) {
               <div className="team-card-top">
                 <div className="team-card-avatar">{emp.avatar || '👷'}</div>
                 <div className="team-card-info">
-                  <div className="team-card-name">{emp.name}</div>
+                  <div className="team-card-name">{getEmployeeName(emp)}</div>
                   <div className="team-card-dept">
                     {emp.department} · <span className="font-mono text-muted">{emp.email}</span>
                   </div>
@@ -352,7 +352,7 @@ export default function Team({ store }) {
         <div className="team-detail fade-in">
           <div className="team-detail-header">
             <h3 className="section-title">
-              Attendance Events: {selectedEmp?.name || selectedEmp?.email} ({selectedDate})
+              Attendance Events: {getEmployeeName(selectedEmp)} ({selectedDate})
             </h3>
             <button className="btn-tiny" onClick={() => setSelected(null)}>
               <X size={14} /> Close

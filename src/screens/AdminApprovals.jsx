@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useAttendanceStore } from '../store/useStore';
+import { getEmployeeName } from '../utils/formatters';
 import {
   CheckCircle2,
   XCircle,
@@ -105,7 +106,7 @@ export default function AdminApprovals() {
                     <div className="user-cell">
                       <div className="user-avatar">{u.avatar || '👤'}</div>
                       <div>
-                        <div className="user-name">{u.name}</div>
+                        <div className="user-name">{getEmployeeName(u)}</div>
                         <div className="user-email font-mono">{u.email}</div>
                       </div>
                     </div>
