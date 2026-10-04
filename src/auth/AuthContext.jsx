@@ -68,9 +68,18 @@ export function AuthProvider({ children }) {
     const isAdmin = checkIsAdminEmail(email);
 
     // Scrape and clean user name from Google / Neon profile
-    const rawName = neonUser.name || neonUser.displayName || neonUser.user_name || neonUser.fullName;
+    const rawName = 
+      neonUser.name || 
+      neonUser.displayName || 
+      neonUser.user_metadata?.full_name ||
+      neonUser.user_metadata?.name ||
+      neonUser.raw_user_meta_data?.full_name ||
+      neonUser.raw_user_meta_data?.name ||
+      neonUser.user_name || 
+      neonUser.fullName;
+
     const cleanName = cleanUserName(rawName, email);
-    const avatar = neonUser.avatar || neonUser.image || neonUser.picture || (isAdmin ? '⚡' : '👷');
+    const avatar = neonUser.avatar || neonUser.image || neonUser.picture || neonUser.user_metadata?.avatar_url || neonUser.raw_user_meta_data?.avatar_url || (isAdmin ? '⚡' : '👷');
 
     try {
       // Sync with application backend to verify DB record and approval status
