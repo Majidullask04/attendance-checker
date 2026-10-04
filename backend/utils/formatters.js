@@ -23,6 +23,9 @@ export function isInvalidName(name) {
   // Email address mistakenly saved as name
   if (trimmed.includes('@')) return true;
 
+  // URLs mistakenly saved as name (e.g., Google profile picture URLs)
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.includes('googleusercontent.com')) return true;
+
   // Generic unhelpful placeholders
   if (/^(unknown|null|undefined|anonymous|user|technician|staff|technician staff|default|\[object Object\])$/i.test(trimmed)) return true;
 
