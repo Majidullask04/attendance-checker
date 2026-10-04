@@ -6,7 +6,7 @@ import LoginScreen from './auth/LoginScreen.jsx';
 import SignupScreen from './auth/SignupScreen.jsx';
 import PendingApproval from './auth/PendingApproval.jsx';
 import { useAttendanceStore } from './store/useStore.js';
-import { getEmployeeName } from './utils/formatters.js';
+import { getEmployeeName, renderAvatar } from './utils/formatters.js';
 import Sidebar from './components/Sidebar.jsx';
 import MobileNav from './components/MobileNav.jsx';
 import TweaksPanel from './components/TweaksPanel.jsx';
@@ -157,7 +157,7 @@ function AppContent() {
             </div>
 
             <div className="header-user">
-              <span className="header-user-avatar">{user?.avatar || '👤'}</span>
+              <span className="header-user-avatar">{renderAvatar(user?.avatar, '👤')}</span>
               <div className="header-user-info-text hide-on-compact">
                 <span className="header-user-name">{getEmployeeName(user)}</span>
                 <span className={`header-role-pill ${isAdmin ? 'pill-admin' : 'pill-user'}`}>

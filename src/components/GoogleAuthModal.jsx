@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, ArrowRight, ShieldCheck, UserPlus } from 'lucide-react';
 import { checkIsAdminEmail } from '../lib/neonAuth.js';
-import { cleanUserName } from '../utils/formatters.js';
+import { cleanUserName, renderAvatar } from '../utils/formatters.js';
 
 const PRESET_GOOGLE_ACCOUNTS = [
   {
@@ -109,7 +109,7 @@ export default function GoogleAuthModal({ isOpen, onClose, onSelectAccount }) {
                   className="google-account-item interactive-item"
                   onClick={() => handleSelectPreset(acc)}
                 >
-                  <div className="google-account-avatar">{acc.avatar}</div>
+                  <div className="google-account-avatar">{renderAvatar(acc.avatar, '👤')}</div>
                   <div className="google-account-info">
                     <div className="google-account-name">{acc.name}</div>
                     <div className="google-account-email font-mono">{acc.email}</div>

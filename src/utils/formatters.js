@@ -1,3 +1,5 @@
+import React from 'react';
+
 export function formatTime(isoString) {
   if (!isoString) return '--:--';
   return new Date(isoString).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
@@ -180,16 +182,51 @@ export function getEmployeeName(recordOrUser, teamMembers = [], currentUser = nu
 }
 
 /**
- * Returns an avatar emoji or formatted initials
+ * Safely renders an avatar.
+ * If the avatar is an image URL (e.g. from Google Auth), it renders a properly styled <img> tag.
+ * If it's an emoji or plain string, it renders that text cleanly.
  */
-export function getEmployeeAvatar(recordOrUser, teamMembers = []) {
-  if (recordOrUser?.avatar) return recordOrUser.avatar;
-  const targetId = recordOrUser?.user_id || recordOrUser?.userId || recordOrUser?.id;
-  if (Array.isArray(teamMembers)) {
-    const match = teamMembers.find((m) => m.id === targetId);
-    if (match?.avatar) return match.avatar;
+export function renderAvatar(avatar, fallback = '👤') {
+  const effectiveAvatar = avatar || fallback;
+  if (!effectiveAvatar) return fallback;
+
+  if (
+    typeof effectiveAvatar === 'string' &&
+    (effectiveAvatar.startsWith('http://') ||
+      effectiveAvatar.startsWith('https://') ||
+      effectiveAvatar.startsWith('data:image') ||
+      effectiveAvatar.includes('googleusercontent.com'))
+  ) {
+    return React.createElement('img', {
+      src: effectiveAvatar,
+      alt: 'avatar',
+      className: 'avatar-img',
+      onError: (e) => {
+        // If the image fails to load, gracefully hide it
+        e.currentTarget.style.display = 'none';
+      },
+    });
   }
-  return '⚡';
+
+  return effectiveAvatar;
 }
 
+/**
+ * Returns an avatar element (img for Google avatars or emoji for default)
+ */
+export function getEmployeeAvatar(recordOrUser, teamMembers = []) {
+  let av = recordOrUser?.avatar;
+  const targetId = recordOrUser?.user_id || recordOrUser?.userId || recordOrUser?.id;
+  const targetEmail = recordOrUser?.userEmail || recordOrUser?.email || recordOrUser?.user?.email;
 
+  if (!av && Array.isArray(teamMembers) && teamMembers.length > 0) {
+    const match = teamMembers.find(
+      (m) =>
+        (targetId && m.id === targetId) ||
+        (targetEmail && m.email?.toLowerCase() === targetEmail.toLowerCase())
+    );
+    if (match?.avatar) av = match.avatar;
+  }
+
+  return renderAvatar(av, '⚡');
+}
