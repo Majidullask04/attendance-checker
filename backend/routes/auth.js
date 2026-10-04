@@ -324,6 +324,24 @@ router.post('/reject/:id', verifyToken, requireAdmin, async (req, res) => {
   }
 });
 
+// ── DELETE /api/auth/users/:id  (admin only) ───────────────────────────────
+router.delete('/users/:id', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await db.runAsync(
+      `DELETE FROM users WHERE id = $1 AND role = 'user'`,
+      [req.params.id]
+    );
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'User not found or cannot be deleted (admins cannot be deleted).' });
+    }
+    await db.runAsync(`DELETE FROM attendance_records WHERE user_id = $1`, [req.params.id]);
+    res.json({ message: 'User deleted successfully.' });
+  } catch (err) {
+    console.error('Delete user error:', err);
+    res.status(500).json({ error: 'Failed to delete user.' });
+  }
+});
+
 // ── PUT /api/auth/profile ──────────────────────────────────────────────────
 router.put('/profile', verifyToken, async (req, res) => {
   const { name, department, avatar } = req.body;
