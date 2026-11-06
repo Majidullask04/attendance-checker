@@ -40,8 +40,8 @@ export function haversineDistance(lat1, lng1, lat2, lng2) {
   const φ2 = lat2 * Math.PI / 180;
   const Δφ = (lat2 - lat1) * Math.PI / 180;
   const Δλ = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export function getWeekDates() {
@@ -186,9 +186,25 @@ export function getEmployeeName(recordOrUser, teamMembers = [], currentUser = nu
  * If the avatar is an image URL (e.g. from Google Auth), it renders a properly styled <img> tag.
  * If it's an emoji or plain string, it renders that text cleanly.
  */
-export function renderAvatar(avatar, fallback = '👤') {
+export function getInitials(value) {
+  const cleaned = typeof value === 'string' ? value.trim() : '';
+  if (!cleaned) return '?';
+  if (cleaned.includes('@')) {
+    const local = cleaned.split('@')[0].trim();
+    const parts = local.replace(/[._\d-]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return '?';
+  }
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return '?';
+}
+
+export function renderAvatar(avatar, fallback = '') {
   const effectiveAvatar = avatar || fallback;
-  if (!effectiveAvatar) return fallback;
+  if (!effectiveAvatar) return getInitials('');
 
   if (
     typeof effectiveAvatar === 'string' &&
@@ -237,5 +253,5 @@ export function getEmployeeAvatar(recordOrUser, teamMembers = []) {
     if (match?.avatar) av = match.avatar;
   }
 
-  return renderAvatar(av, '⚡');
+  return renderAvatar(av, getInitials(targetEmail || recordOrUser?.name));
 }

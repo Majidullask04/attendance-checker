@@ -186,15 +186,14 @@ export default function CheckIn({ store }) {
         <div className="checkin-card">
           {/* Status Indicator */}
           <div
-            className={`checkin-status checkin-status--${
-              attendanceState === 'checked_in'
+            className={`checkin-status checkin-status--${attendanceState === 'checked_in'
                 ? 'success'
                 : attendanceState === 'on_break'
-                ? 'warning'
-                : attendanceState === 'ot_active'
-                ? 'purple'
-                : 'neutral'
-            }`}
+                  ? 'warning'
+                  : attendanceState === 'ot_active'
+                    ? 'purple'
+                    : 'neutral'
+              }`}
           >
             <div className="pulse-ring-wrap">
               <div className="pulse-ring" />
@@ -205,12 +204,12 @@ export default function CheckIn({ store }) {
                 {attendanceState === 'checked_in'
                   ? 'Checked In (Active Shift)'
                   : attendanceState === 'on_break'
-                  ? 'On Break (30–40 min)'
-                  : attendanceState === 'ot_active'
-                  ? 'Active Overtime (OT)'
-                  : attendanceState === 'checking_in'
-                  ? 'Verifying Station…'
-                  : 'Ready to Check In'}
+                    ? 'On Break (30–40 min)'
+                    : attendanceState === 'ot_active'
+                      ? 'Active Overtime (OT)'
+                      : attendanceState === 'checking_in'
+                        ? 'Verifying Station…'
+                        : 'Ready to Check In'}
               </div>
               {recordedTime && (
                 <div className="checkin-status-time font-mono">
@@ -385,7 +384,7 @@ export default function CheckIn({ store }) {
                 <div className="info-card-row">
                   <span className="info-card-row-label">Method</span>
                   <span className="info-card-row-val font-mono text-accent">
-                    QR CODE SCAN
+                    QR code scan
                   </span>
                 </div>
                 <div className="info-card-row">

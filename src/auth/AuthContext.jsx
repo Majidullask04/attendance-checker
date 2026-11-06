@@ -11,15 +11,45 @@ import { cleanUserName } from '../utils/formatters.js';
 
 const AuthContext = createContext(null);
 
+// ============================================================================
+// AUTH BYPASS MODE (Temporary)
+// Set to true to open the platform directly without any login, Google auth,
+// or approval gate.
+// Set to false to immediately restore original login and Google authentication.
+// ============================================================================
+export const AUTH_BYPASS = true;
+
+export const BYPASS_ADMIN_USER = {
+  id: 'usr-admin-bypass',
+  email: 'mrelectricalworks02@gmail.com',
+  name: 'Admin',
+  role: 'admin',
+  department: 'Management',
+  avatar: '⚡',
+  deviceId: 'web-client-bypass',
+  isApproved: 1,
+  isAdminVerified: true,
+  authProvider: 'bypass',
+};
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState(AUTH_BYPASS ? BYPASS_ADMIN_USER : null);
+  const [isLoading, setIsLoading] = useState(!AUTH_BYPASS);
   const [pendingApproval, setPendingApproval] = useState(false);
-  const [authProvider, setAuthProvider] = useState('local'); // 'local' | 'neon_google'
+  const [authProvider, setAuthProvider] = useState(AUTH_BYPASS ? 'bypass' : 'local'); // 'local' | 'neon_google' | 'bypass'
   const [authError, setAuthError] = useState('');
 
   useEffect(() => {
+    if (AUTH_BYPASS) {
+      setUser(BYPASS_ADMIN_USER);
+      setIsLoading(false);
+      setPendingApproval(false);
+      if (typeof localStorage !== 'undefined' && !localStorage.getItem('attendance_token')) {
+        localStorage.setItem('attendance_token', 'bypass-admin-token');
+      }
+      return;
+    }
+
     let isMounted = true;
 
     async function initAuth() {
@@ -245,13 +275,17 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    if (AUTH_BYPASS) {
+      console.info('Direct Access Mode is active — sign out ignored to keep platform open.');
+      return;
+    }
     await signOutFromNeon();
     localStorage.removeItem('attendance_token');
     setUser(null);
     setPendingApproval(false);
   };
 
-  const isAdmin = Boolean(user && user.isAdminVerified && user.role === 'admin');
+  const isAdmin = AUTH_BYPASS || Boolean(user && user.isAdminVerified && user.role === 'admin');
 
   return (
     <AuthContext.Provider
@@ -260,14 +294,15 @@ export function AuthProvider({ children }) {
         login,
         loginWithGoogle,
         logout,
-        isLoading,
-        pendingApproval,
+        isLoading: AUTH_BYPASS ? false : isLoading,
+        pendingApproval: AUTH_BYPASS ? false : pendingApproval,
         isAdmin,
         isUser: !isAdmin,
-        isAuthenticated: !!user,
+        isAuthenticated: AUTH_BYPASS || !!user,
         authProvider,
         isNeonAuthLive,
         authError,
+        isAuthBypassed: AUTH_BYPASS,
       }}
     >
       {children}

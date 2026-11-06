@@ -23,17 +23,17 @@ export default function Sidebar({
   isOnline,
   offlineQueue = 0,
   isMobileOpen = false,
-  onCloseMobile = () => {},
+  onCloseMobile = () => { },
 }) {
   const { logout, isAdmin } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
 
   const navItems = [
-    { 
-      id: 'dashboard', 
-      label: 'Dashboard', 
-      icon: <LayoutDashboard size={18} strokeWidth={2} />, 
-      badge: null 
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: <LayoutDashboard size={18} strokeWidth={2} />,
+      badge: null
     },
     {
       id: 'checkin',
@@ -41,33 +41,33 @@ export default function Sidebar({
       icon: <QrCode size={18} strokeWidth={2} />,
       badge: null,
     },
-    { 
-      id: 'myrecords', 
-      label: 'My Records', 
-      icon: <History size={18} strokeWidth={2} />, 
-      badge: null 
+    {
+      id: 'myrecords',
+      label: 'My Records',
+      icon: <History size={18} strokeWidth={2} />,
+      badge: null
     },
     ...(isAdmin
       ? [
-          { 
-            id: 'approvals', 
-            label: 'Pending Approvals', 
-            icon: <UserCheck size={18} strokeWidth={2} />, 
-            badge: null 
-          },
-          { 
-            id: 'team', 
-            label: 'Team Overview', 
-            icon: <Users size={18} strokeWidth={2} />, 
-            badge: null 
-          },
-          {
-            id: 'audit',
-            label: 'Audit & Fraud Log',
-            icon: <ShieldAlert size={18} strokeWidth={2} />,
-            badge: stats.flaggedRecords > 0 ? stats.flaggedRecords : null,
-          },
-        ]
+        {
+          id: 'approvals',
+          label: 'Pending Approvals',
+          icon: <UserCheck size={18} strokeWidth={2} />,
+          badge: null
+        },
+        {
+          id: 'team',
+          label: 'Team Overview',
+          icon: <Users size={18} strokeWidth={2} />,
+          badge: null
+        },
+        {
+          id: 'audit',
+          label: 'Audit & Fraud Log',
+          icon: <ShieldAlert size={18} strokeWidth={2} />,
+          badge: stats.flaggedRecords > 0 ? stats.flaggedRecords : null,
+        },
+      ]
       : []),
   ];
 
@@ -80,7 +80,7 @@ export default function Sidebar({
     <>
       {/* Mobile Backdrop */}
       {isMobileOpen && (
-        <div 
+        <div
           className="sidebar-mobile-backdrop"
           onClick={onCloseMobile}
           aria-hidden="true"
@@ -101,7 +101,7 @@ export default function Sidebar({
               </div>
             )}
           </div>
-          
+
           {/* Desktop collapse button */}
           <button
             className="sidebar-collapse-btn desktop-only"
@@ -133,7 +133,7 @@ export default function Sidebar({
                 </div>
                 <div className="sidebar-user-role-wrap">
                   <span className={`role-badge ${isAdmin ? 'role-badge--admin' : 'role-badge--user'}`}>
-                    {isAdmin ? '👑 Admin' : '👷 Technician'}
+                    {isAdmin ? 'Admin' : 'Technician'}
                   </span>
                   <span className="sidebar-user-dept">{currentUser.department || 'Operations'}</span>
                 </div>
@@ -190,7 +190,7 @@ export default function Sidebar({
 
           {(!collapsed || isMobileOpen) && (
             <div className="sidebar-version">
-              <span className="sidebar-version-text">v2.3 · Neon & Google Verified</span>
+              <span className="sidebar-version-text">{isAdmin ? 'Administrator' : 'Employee'} account</span>
             </div>
           )}
         </div>

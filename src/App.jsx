@@ -1,7 +1,7 @@
 import './index.css';
 import './App.css';
 import { useState, useEffect } from 'react';
-import { AuthProvider, useAuth } from './auth/AuthContext.jsx';
+import { AuthProvider, useAuth, AUTH_BYPASS } from './auth/AuthContext.jsx';
 import LoginScreen from './auth/LoginScreen.jsx';
 import SignupScreen from './auth/SignupScreen.jsx';
 import PendingApproval from './auth/PendingApproval.jsx';
@@ -31,7 +31,12 @@ const SCREENS = {
 
 function AuthGate() {
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
-  const { user, isLoading, pendingApproval } = useAuth();
+  const { user, isLoading, pendingApproval, isAuthBypassed } = useAuth();
+
+  // DIRECT ACCESS MODE: Open platform directly without any login, Google auth, or approval page
+  if (AUTH_BYPASS || isAuthBypassed) {
+    return <AppContent />;
+  }
 
   if (isLoading) {
     return (
@@ -170,10 +175,10 @@ function AppContent() {
               id="btn-header-logout"
               className="btn-header-logout interactive-item"
               onClick={logout}
-              title="Sign Out"
+              title={AUTH_BYPASS ? 'Direct Access Mode (Authentication bypassed)' : 'Sign Out'}
             >
               <LogOut size={14} />
-              <span className="hide-on-mobile">Sign Out</span>
+              <span className="hide-on-mobile">{AUTH_BYPASS ? 'Open Mode' : 'Sign Out'}</span>
             </button>
           </div>
         </header>

@@ -111,10 +111,10 @@ export default function DayTimeline() {
             <span className="segment-label">17:00 Full Day / OT</span>
           </div>
 
-          {/* Current Time Cursor */}
+          {/* Current Time Cursor — positioned via transform (Floor 10a) */}
           <div
             className="timeline-now-cursor"
-            style={{ left: `${Math.min(100, Math.max(0, currentPercent))}%` }}
+            style={{ '--cursor-pct': `${Math.min(100, Math.max(0, currentPercent))}%` }}
           >
             <div className="now-cursor-pin font-mono">{now.timeString}</div>
             <div className="now-cursor-line" />

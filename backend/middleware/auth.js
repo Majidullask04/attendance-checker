@@ -7,6 +7,26 @@ const JWT_SECRET = process.env.JWT_SECRET || 'mrelectric_secure_jwt_token_key_20
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'mrelectricalworks02@gmail.com').toLowerCase();
 const NEON_AUTH_JWKS_URL = process.env.NEON_AUTH_JWKS_URL || 'https://ep-delicate-cherry-ayfepet4.neonauth.c-5.us-east-2.aws.neon.tech/neondb/auth/.well-known/jwks.json';
 
+// ============================================================================
+// AUTH BYPASS MODE (Temporary)
+// Set to true to allow direct access without login or token verification.
+// Set to false to restore strict JWT and Neon OAuth token verification.
+// ============================================================================
+export const AUTH_BYPASS = true;
+
+export const DEFAULT_ADMIN_USER = {
+  id: 'usr-admin-bypass',
+  email: ADMIN_EMAIL,
+  name: 'Admin',
+  role: 'admin',
+  department: 'Management',
+  avatar: '⚡',
+  deviceId: 'web-client-bypass',
+  isApproved: 1,
+  isAdminVerified: true,
+  authProvider: 'bypass',
+};
+
 // Initialize remote JWKS for Neon Auth token validation
 let remoteJWKS = null;
 try {
@@ -35,6 +55,11 @@ export function signToken(user) {
 }
 
 export async function verifyToken(req, res, next) {
+  if (AUTH_BYPASS) {
+    req.user = DEFAULT_ADMIN_USER;
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'No authentication token provided.' });
@@ -90,6 +115,7 @@ export async function verifyToken(req, res, next) {
 }
 
 export function requireAdmin(req, res, next) {
+  if (AUTH_BYPASS) return next();
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ error: 'Forbidden: Administrator privileges required.' });
   }

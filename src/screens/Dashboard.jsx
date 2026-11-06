@@ -76,14 +76,13 @@ function WeekChart({ records = [], employees = [], isUserOnly, userEmail }) {
           return (
             <div
               key={i}
-              className={`week-bar ${isToday ? 'week-bar--today' : ''} ${
-                isWeekend ? 'week-bar--weekend' : ''
-              }`}
+              className={`week-bar ${isToday ? 'week-bar--today' : ''} ${isWeekend ? 'week-bar--weekend' : ''
+                }`}
             >
               <div className="week-bar-track">
                 <div
                   className="week-bar-fill"
-                  style={{ height: `${pct}%`, '--pct': `${pct}%` }}
+                  style={{ '--pct': `${pct}%` }}
                 />
               </div>
               <div className="week-bar-label">
@@ -151,20 +150,18 @@ function ActivityFeed({ records = [], teamSummary = [], currentUser = null, isUs
           return (
             <div
               key={r.id}
-              className={`activity-item ${
-                r.status === 'flagged' ? 'activity-item--flagged' : ''
-              }`}
+              className={`activity-item ${r.status === 'flagged' ? 'activity-item--flagged' : ''
+                }`}
             >
               <div
-                className={`activity-dot activity-dot--${
-                  type === 'check_in' || type === 'break_end'
-                    ? 'success'
-                    : type === 'break_start'
+                className={`activity-dot activity-dot--${type === 'check_in' || type === 'break_end'
+                  ? 'success'
+                  : type === 'break_start'
                     ? 'warning'
                     : type === 'ot_start' || type === 'ot_end'
-                    ? 'purple'
-                    : 'info'
-                }`}
+                      ? 'purple'
+                      : 'info'
+                  }`}
               />
               <div className="activity-body">
                 <div className="activity-action">
@@ -182,7 +179,9 @@ function ActivityFeed({ records = [], teamSummary = [], currentUser = null, isUs
                   )}
                 </div>
                 <div className="activity-meta font-mono">
-                  {formatTime(time)} · Station QR · {score}% Confidence
+                  <span>{formatTime(time)}</span>
+                  <span className="activity-meta-sep">Station QR</span>
+                  <span className="activity-meta-sep">{score}% Confidence</span>
                 </div>
               </div>
               <div className="activity-time font-mono">{formatTime(time)}</div>
@@ -292,10 +291,10 @@ export default function Dashboard({ store }) {
               attendanceState === 'checked_in'
                 ? 'Active'
                 : attendanceState === 'on_break'
-                ? 'On Break'
-                : myTodayOut
-                ? 'Completed'
-                : 'Not Started'
+                  ? 'On Break'
+                  : myTodayOut
+                    ? 'Completed'
+                    : 'Not Started'
             }
             sub={
               myTodayIn
@@ -311,12 +310,12 @@ export default function Dashboard({ store }) {
               attendanceState === 'checked_in'
                 ? timer.short
                 : myTodayIn && myTodayOut
-                ? formatDuration(
+                  ? formatDuration(
                     (new Date(myTodayOut.recorded_at || myTodayOut.recordedAt) -
                       new Date(myTodayIn.recorded_at || myTodayIn.recordedAt)) /
-                      3600000
+                    3600000
                   )
-                : '0h 0m'
+                  : '0h 0m'
             }
             sub="worked hours"
             color="info"
@@ -372,9 +371,8 @@ export default function Dashboard({ store }) {
             {teamSummary.map((emp) => (
               <div
                 key={emp.id}
-                className={`team-quick-card ${
-                  emp.flagged ? 'team-quick-card--flagged' : ''
-                } interactive-item`}
+                className={`team-quick-card ${emp.flagged ? 'team-quick-card--flagged' : ''
+                  } interactive-item`}
                 onClick={() => setActiveScreen('team')}
                 role="button"
                 tabIndex={0}
@@ -390,8 +388,8 @@ export default function Dashboard({ store }) {
                   {emp.status === 'present'
                     ? '● Present'
                     : emp.status === 'checked_out'
-                    ? '✓ Done'
-                    : '○ Absent'}
+                      ? '✓ Done'
+                      : '○ Absent'}
                 </div>
                 {emp.checkInTime && (
                   <div className="team-quick-time font-mono">

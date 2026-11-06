@@ -28,7 +28,13 @@ export function useAttendanceStore() {
   const [records, setRecords] = useState([]);
   const [teamSummary, setTeamSummary] = useState([]);
   const [auditRecords, setAuditRecords] = useState([]);
-  const [currentQRToken, setCurrentQRToken] = useState(null);
+  const [currentQRToken, setCurrentQRToken] = useState(() => ({
+    tokenId: 'tok_station_main_hq',
+    token: 'tok_station_main_hq',
+    locationId: 'loc-001',
+    locationName: 'Main HQ & Warehouse',
+    generatedAt: new Date().toISOString(),
+  }));
   const [activeLocation, setActiveLocation] = useState(LOCATIONS[0]);
   const [activeScreen, setActiveScreen] = useState('dashboard');
   const [toasts, setToasts] = useState([]);
