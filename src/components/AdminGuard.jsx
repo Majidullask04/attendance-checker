@@ -1,4 +1,4 @@
-import { ShieldAlert, Lock, ArrowLeft, MailCheck } from 'lucide-react';
+import { Lock, ArrowLeft, MailCheck } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { ADMIN_EMAIL } from '../config/auth.js';
 

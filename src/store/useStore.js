@@ -68,7 +68,7 @@ export function useAttendanceStore() {
   // Request browser notification permission once if supported
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
+      Notification.requestPermission().catch(() => { });
     }
   }, []);
 
@@ -98,7 +98,7 @@ export function useAttendanceStore() {
         const d = r.recorded_at || r.recordedAt;
         if (!d) return false;
         return new Date(d).toISOString().slice(0, 10) === todayDateStr ||
-               new Date(d).toLocaleDateString('en-CA', { timeZone: POLICY.TIMEZONE }) === todayDateStr;
+          new Date(d).toLocaleDateString('en-CA', { timeZone: POLICY.TIMEZONE }) === todayDateStr;
       });
 
       const lastIn = [...todayRecs].reverse().find((r) => r.record_type === 'check_in' || r.recordType === 'check_in');
@@ -143,6 +143,8 @@ export function useAttendanceStore() {
         locationId: data.locationId || 'loc-001',
         locationName: data.locationName || 'Main HQ & Warehouse',
         generatedAt: data.generatedAt,
+        exp: data.exp,
+        sig: data.sig,
       });
     } catch (err) {
       console.warn('Could not fetch active QR:', err);
@@ -188,7 +190,7 @@ export function useAttendanceStore() {
     } finally {
       setIsSyncing(false);
     }
-  }, [isSyncing, authUser?.role, addToast, loadRecords, loadTeamData, loadAuditData]);
+  }, [isSyncing, authUser, addToast, loadRecords, loadTeamData, loadAuditData]);
 
   // Initial load
   useEffect(() => {
@@ -258,6 +260,8 @@ export function useAttendanceStore() {
           locationId: data.locationId,
           locationName: data.locationName || location.name,
           generatedAt: data.generatedAt,
+          exp: data.exp,
+          sig: data.sig,
         };
         setCurrentQRToken(newToken);
         addToast('New Station QR generated. Previous QR is now invalid.', 'success');
@@ -435,7 +439,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [authUser?.role, addToast, loadRecords, loadTeamData]
+    [authUser, addToast, loadRecords, loadTeamData]
   );
 
   // ── Overtime (OT) ─────────────────────────────────────────────────────────
@@ -465,7 +469,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [authUser?.role, addToast, loadRecords, loadTeamData]
+    [authUser, addToast, loadRecords, loadTeamData]
   );
 
   const endOT = useCallback(
@@ -494,7 +498,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [authUser?.role, addToast, loadRecords, loadTeamData]
+    [authUser, addToast, loadRecords, loadTeamData]
   );
 
   // ── PDF Export ────────────────────────────────────────────────────────────
@@ -543,7 +547,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [authUser?.role, addToast, loadTeamData]
+    [authUser, addToast, loadTeamData]
   );
 
   // ── Derived Data ──────────────────────────────────────────────────────────

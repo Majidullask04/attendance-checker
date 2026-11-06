@@ -28,8 +28,10 @@ export default function QRGenerator({ store }) {
       l: currentQRToken.locationId,
       t: currentQRToken.token || currentQRToken.tokenId,
       g: Math.floor(new Date(currentQRToken.generatedAt).getTime() / 1000),
+      exp: currentQRToken.exp,
+      sig: currentQRToken.sig,
     });
-    
+
     QRCode.toDataURL(compactPayload, {
       width: 280,
       margin: 2,
@@ -53,7 +55,7 @@ export default function QRGenerator({ store }) {
     try {
       await generateNewQRToken(activeLocation);
       addToast('New QR Token generated. Previous QR is now invalid.', 'success');
-    } catch (e) {
+    } catch {
       addToast('Error generating token', 'error');
     } finally {
       setIsGenerating(false);

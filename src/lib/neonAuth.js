@@ -37,7 +37,7 @@ export function decodeGoogleJwt(jwt) {
         .join('')
     );
     return JSON.parse(jsonPayload);
-  } catch (_e) {
+  } catch {
     return null;
   }
 }
@@ -223,14 +223,14 @@ export async function getNeonSession() {
     if (!response.ok) return null;
     const data = await response.json();
     if (!data) return null;
-    
+
     // Normalize user object location
     const user = data.user || data.session?.user;
     if (data.session && user) {
       return { ...data, user };
     }
     return data?.session ? data : null;
-  } catch (_err) {
+  } catch {
     return null;
   }
 }

@@ -2,14 +2,11 @@ import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { formatTime, formatDate, confidenceLabel, getEmployeeName, getEmployeeAvatar } from '../utils/formatters.js';
 import {
-  ShieldAlert,
   ShieldCheck,
   AlertTriangle,
   Lock,
   X,
   FileText,
-  CheckCircle2,
-  UserCheck,
   Search,
 } from 'lucide-react';
 
@@ -161,9 +158,8 @@ export default function AuditLog({ store }) {
                     <div className="emp-name font-semibold">{empName}</div>
                   </div>
                   <div
-                    className={`record-type-badge ${
-                      type === 'check_in' ? 'badge-in' : 'badge-out'
-                    }`}
+                    className={`record-type-badge ${type === 'check_in' ? 'badge-in' : 'badge-out'
+                      }`}
                   >
                     {type === 'check_in' ? 'CHECK IN' : 'CHECK OUT'}
                   </div>
@@ -253,9 +249,8 @@ export default function AuditLog({ store }) {
               return (
                 <div
                   key={r.id}
-                  className={`audit-log-row ${
-                    r.status === 'flagged' ? 'audit-log-row--flagged' : ''
-                  } interactive-item`}
+                  className={`audit-log-row ${r.status === 'flagged' ? 'audit-log-row--flagged' : ''
+                    } interactive-item`}
                 >
                   <span className="font-mono text-muted">
                     {formatDate(time)} {formatTime(time)}
@@ -266,29 +261,28 @@ export default function AuditLog({ store }) {
                   </span>
                   <span>
                     <span
-                      className={`record-type-badge-sm ${
-                        type === 'check_in' || type === 'break_end'
+                      className={`record-type-badge-sm ${type === 'check_in' || type === 'break_end'
                           ? 'badge-in'
                           : type === 'break_start'
-                          ? 'badge-warning'
-                          : type === 'ot_start' || type === 'ot_end'
-                          ? 'badge-ot'
-                          : 'badge-out'
-                      }`}
+                            ? 'badge-warning'
+                            : type === 'ot_start' || type === 'ot_end'
+                              ? 'badge-ot'
+                              : 'badge-out'
+                        }`}
                     >
                       {type === 'check_in'
                         ? '▲ Check In'
                         : type === 'check_out'
-                        ? '▼ Check Out'
-                        : type === 'break_start'
-                        ? 'Break Start'
-                        : type === 'break_end'
-                        ? 'Break Resume'
-                        : type === 'ot_start'
-                        ? 'Overtime Start'
-                        : type === 'ot_end'
-                        ? 'Overtime Stop'
-                        : type}
+                          ? '▼ Check Out'
+                          : type === 'break_start'
+                            ? 'Break Start'
+                            : type === 'break_end'
+                              ? 'Break Resume'
+                              : type === 'ot_start'
+                                ? 'Overtime Start'
+                                : type === 'ot_end'
+                                  ? 'Overtime Stop'
+                                  : type}
                     </span>
                   </span>
                   <span className="font-mono text-accent">QR SCAN</span>
@@ -300,13 +294,12 @@ export default function AuditLog({ store }) {
                   </span>
                   <span>
                     <span
-                      className={`badge badge--${
-                        r.status === 'flagged'
+                      className={`badge badge--${r.status === 'flagged'
                           ? 'danger'
                           : r.status === 'corrected'
-                          ? 'info'
-                          : 'success'
-                      }`}
+                            ? 'info'
+                            : 'success'
+                        }`}
                     >
                       {r.status || 'verified'}
                     </span>

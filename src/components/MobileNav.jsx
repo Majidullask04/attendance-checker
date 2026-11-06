@@ -1,4 +1,4 @@
-import { LayoutDashboard, QrCode, History, Users, Menu, UserCheck } from 'lucide-react';
+import { LayoutDashboard, QrCode, History, Menu, UserCheck } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 
 export default function MobileNav({ activeScreen, setActiveScreen, onOpenMenu }) {

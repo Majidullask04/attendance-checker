@@ -7,7 +7,8 @@ export const POLICY = {
   TIMEZONE: process.env.APP_TIMEZONE || 'Asia/Kolkata',
   // Check-in window
   CHECK_IN_START: process.env.CHECK_IN_START || '06:00',
-  CHECK_IN_END: process.env.CHECK_IN_END || '09:00', // On-time deadline; scans after this are Late
+  CHECK_IN_END: process.env.CHECK_IN_END || '09:00', // On-time deadline; scans after this enter the grace window
+  CHECK_IN_GRACE_MINUTES: Number(process.env.CHECK_IN_GRACE_MINUTES ?? 15), // 09:00–09:15 grace buffer before Late
 
   // Break policy
   BREAK_NOTIFY: process.env.BREAK_NOTIFY || '13:50', // 1:50 PM notification
@@ -130,7 +131,9 @@ export function evaluateScanStatus(recordedAt = new Date(), currentType = 'check
   const workEndMinutes = timeToMinutes(POLICY.WORK_END);    // 17:00 = 1020
 
   if (currentType === 'check_in') {
-    return currentMinutes <= onTimeMinutes ? 'on_time' : 'late';
+    if (currentMinutes <= onTimeMinutes) return 'on_time';
+    // 15-minute grace buffer (09:00–09:15) before Late is stamped
+    return currentMinutes <= onTimeMinutes + POLICY.CHECK_IN_GRACE_MINUTES ? 'grace' : 'late';
   }
 
   if (currentType === 'check_out') {

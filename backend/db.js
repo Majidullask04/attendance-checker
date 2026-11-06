@@ -90,6 +90,38 @@ const initDb = async () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
 
+    // Phase 2: work mode + site reference on each punch (HQ / EPC site / On-Duty)
+    try {
+      const infoCols = await db.allAsync(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'attendance_records'`
+      );
+      const have = new Set((infoCols || []).map((c) => c.column_name));
+      if (!have.has('work_mode')) {
+        await db.runAsync(`ALTER TABLE attendance_records ADD COLUMN work_mode TEXT`);
+      }
+      if (!have.has('site_ref')) {
+        await db.runAsync(`ALTER TABLE attendance_records ADD COLUMN site_ref TEXT`);
+      }
+    } catch (colErr) {
+      console.log('Work mode column check:', colErr.message);
+    }
+
+    // Phase 2: self-service regularization requests (Zoho-style missed-punch fixes)
+    await db.runAsync(`CREATE TABLE IF NOT EXISTS regularization_requests (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      request_date TEXT NOT NULL,
+      check_in_time TEXT,
+      check_out_time TEXT,
+      reason_code TEXT NOT NULL,
+      note TEXT,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected')),
+      reviewed_by TEXT,
+      reviewed_at TIMESTAMP,
+      review_note TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+
     // Auto-migrate record_type check constraint for existing PostgreSQL databases
     try {
       const constraints = await db.allAsync(`
@@ -137,6 +169,7 @@ async function startup() {
   try {
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_used_tokens_lookup ON used_tokens (token, user_id, action_type)`);
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_records_user_date ON attendance_records (user_id, recorded_at)`);
+    await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_regularization_status ON regularization_requests (status, request_date)`);
     console.log('Indexes created successfully');
   } catch (err) {
     console.error('Error creating indexes:', err.message);

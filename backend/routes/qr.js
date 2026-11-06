@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import db from '../db.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { signQRPayload } from '../utils/qrSign.js';
 
 const router = Router();
 
@@ -28,6 +29,7 @@ router.post('/regenerate', requireAdmin, async (req, res) => {
       locationId,
       locationName,
       generatedAt: now,
+      ...signQRPayload(token),
     });
   } catch (err) {
     console.error('Error generating new QR token:', err);
@@ -59,6 +61,7 @@ router.get('/current', async (req, res) => {
       locationId: row.location_id,
       locationName: row.location_name || 'Main Warehouse',
       generatedAt: row.generated_at,
+      ...signQRPayload(row.token),
     });
   } catch (err) {
     console.error('Error fetching current QR token:', err);

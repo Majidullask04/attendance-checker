@@ -12,7 +12,7 @@ const NEON_AUTH_JWKS_URL = process.env.NEON_AUTH_JWKS_URL || 'https://ep-delicat
 // Set to true to allow direct access without login or token verification.
 // Set to false to restore strict JWT and Neon OAuth token verification.
 // ============================================================================
-export const AUTH_BYPASS = true;
+export const AUTH_BYPASS = false;
 
 export const DEFAULT_ADMIN_USER = {
   id: 'usr-admin-bypass',
@@ -75,7 +75,7 @@ export async function verifyToken(req, res, next) {
     }
     req.user = decoded;
     return next();
-  } catch (_localErr) {
+  } catch {
     // Not a local secret token or expired; proceed to check Neon Auth JWKS
   }
 
@@ -90,7 +90,7 @@ export async function verifyToken(req, res, next) {
       let dbUser = null;
       try {
         dbUser = await db.getAsync('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
-      } catch (_dbErr) {
+      } catch {
         // Continue with token payload if DB lookup fails
       }
 
@@ -106,7 +106,7 @@ export async function verifyToken(req, res, next) {
       };
 
       return next();
-    } catch (_neonErr) {
+    } catch {
       // Both verifications failed
     }
   }

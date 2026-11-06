@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Sliders, X, Sparkles, Moon, Sun, Smartphone, Laptop, Zap, Shield, Eye } from 'lucide-react';
+import { Sliders, X, Sparkles, Zap, Shield } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { ADMIN_EMAIL } from '../config/auth.js';
 

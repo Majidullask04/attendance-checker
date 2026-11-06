@@ -7,12 +7,8 @@ import {
   LayoutGrid,
   Table as TableIcon,
   Lock,
-  CheckCircle2,
   AlertTriangle,
-  Clock,
-  Coffee,
   FastForward,
-  Square,
   Calendar,
   X,
   ClipboardList,
@@ -242,19 +238,18 @@ export default function Team({ store }) {
                       </td>
                       <td>
                         <span
-                          className={`record-type-badge ${
-                            emp.status === 'present'
+                          className={`record-type-badge ${emp.status === 'present'
                               ? 'badge-in'
                               : emp.status === 'checked_out'
-                              ? 'badge-out'
-                              : emp.status === 'late'
-                              ? 'badge-warning'
-                              : emp.status === 'half_day'
-                              ? 'badge-warning'
-                              : emp.status === 'overtime'
-                              ? 'badge-ot'
-                              : 'status-pill--neutral'
-                          }`}
+                                ? 'badge-out'
+                                : emp.status === 'late'
+                                  ? 'badge-warning'
+                                  : emp.status === 'half_day'
+                                    ? 'badge-warning'
+                                    : emp.status === 'overtime'
+                                      ? 'badge-ot'
+                                      : 'status-pill--neutral'
+                            }`}
                         >
                           {emp.statusLabel || emp.status.toUpperCase()}
                         </span>
@@ -301,9 +296,8 @@ export default function Team({ store }) {
             <div
               key={emp.id}
               id={`team-card-${emp.id}`}
-              className={`team-card ${emp.flagged ? 'team-card--flagged' : ''} ${
-                selected === emp.id ? 'team-card--selected' : ''
-              } interactive-item`}
+              className={`team-card ${emp.flagged ? 'team-card--flagged' : ''} ${selected === emp.id ? 'team-card--selected' : ''
+                } interactive-item`}
               onClick={() => setSelected(selected === emp.id ? null : emp.id)}
               role="button"
               tabIndex={0}
@@ -411,33 +405,32 @@ export default function Team({ store }) {
                     className={`record-row ${r.status === 'flagged' ? 'record-row--flagged' : ''} interactive-item`}
                   >
                     <div
-                      className={`record-type-badge ${
-                        type === 'check_in'
+                      className={`record-type-badge ${type === 'check_in'
                           ? 'badge-in'
                           : type === 'check_out'
-                          ? 'badge-out'
-                          : type === 'break_start'
-                          ? 'badge-warning'
-                          : type === 'break_end'
-                          ? 'badge-in'
-                          : type === 'ot_start'
-                          ? 'badge-ot'
-                          : 'badge-out'
-                      }`}
+                            ? 'badge-out'
+                            : type === 'break_start'
+                              ? 'badge-warning'
+                              : type === 'break_end'
+                                ? 'badge-in'
+                                : type === 'ot_start'
+                                  ? 'badge-ot'
+                                  : 'badge-out'
+                        }`}
                     >
                       {type === 'check_in'
                         ? 'CHECK IN'
                         : type === 'check_out'
-                        ? 'CHECK OUT'
-                        : type === 'break_start'
-                        ? 'BREAK START'
-                        : type === 'break_end'
-                        ? 'BREAK RESUME'
-                        : type === 'ot_start'
-                        ? 'OT START'
-                        : type === 'ot_end'
-                        ? 'OT STOP'
-                        : type}
+                          ? 'CHECK OUT'
+                          : type === 'break_start'
+                            ? 'BREAK START'
+                            : type === 'break_end'
+                              ? 'BREAK RESUME'
+                              : type === 'ot_start'
+                                ? 'OT START'
+                                : type === 'ot_end'
+                                  ? 'OT STOP'
+                                  : type}
                     </div>
 
                     <div className="record-time font-mono">

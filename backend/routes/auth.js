@@ -247,7 +247,7 @@ router.get('/me', verifyToken, async (req, res) => {
     const safeName = cleanUserName(user.name, user.email);
     // Auto-update if DB name was an unreadable hash
     if (isInvalidName(user.name) && safeName !== user.name) {
-      db.runAsync(`UPDATE users SET name = $1 WHERE id = $2`, [safeName, user.id]).catch(() => {});
+      db.runAsync(`UPDATE users SET name = $1 WHERE id = $2`, [safeName, user.id]).catch(() => { });
     }
 
     res.json({
@@ -262,7 +262,7 @@ router.get('/me', verifyToken, async (req, res) => {
         isApproved: user.is_approved,
       },
     });
-  } catch (_err) {
+  } catch {
     res.status(500).json({ error: 'Failed to fetch user profile.' });
   }
 });
@@ -276,7 +276,7 @@ router.get('/pending', verifyToken, requireAdmin, async (req, res) => {
     const cleanedUsers = (users || []).map((u) => {
       const safeName = cleanUserName(u.name, u.email);
       if (isInvalidName(u.name)) {
-        db.runAsync(`UPDATE users SET name = $1 WHERE id = $2`, [safeName, u.id]).catch(() => {});
+        db.runAsync(`UPDATE users SET name = $1 WHERE id = $2`, [safeName, u.id]).catch(() => { });
       }
       return {
         ...u,

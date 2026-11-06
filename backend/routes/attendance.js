@@ -4,6 +4,7 @@ import PDFDocument from 'pdfkit';
 import db from '../db.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { POLICY, getDayBounds, getZonedDateTime, evaluateScanStatus, timeToMinutes } from '../config/policy.js';
+import { verifyQRSignedWindow } from '../utils/qrSign.js';
 import { cleanUserName } from '../utils/formatters.js';
 
 const router = Router();
@@ -50,10 +51,16 @@ function parseQRPayload(body) {
     return { error: 'QR Code signature missing token ID.' };
   }
 
-  const ALLOWED_KEYS = ['l', 't', 'g', 'locationId', 'token', 'tokenId', 'generatedAt', 'locationName'];
+  const ALLOWED_KEYS = ['l', 't', 'g', 'exp', 'sig', 'locationId', 'token', 'tokenId', 'generatedAt', 'locationName'];
   const hasUnexpectedKeys = Object.keys(data).some((k) => !ALLOWED_KEYS.includes(k));
   if (hasUnexpectedKeys) {
     return { error: 'QR payload contains unexpected fields.' };
+  }
+
+  // 30s rotating-window freshness: required on live scans (offline sync stays lenient)
+  const freshError = verifyQRSignedWindow({ token: tokenString, exp: data.exp, sig: data.sig });
+  if (freshError) {
+    return { error: freshError };
   }
 
   return { data, tokenString };
@@ -70,7 +77,7 @@ router.get('/policy', (req, res) => {
 
 // POST /api/attendance/check-in
 router.post('/check-in', async (req, res) => {
-  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp } = req.body;
+  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef, inZone } = req.body;
   const userId = req.user.id;
 
   const parsed = parseQRPayload(req.body);
@@ -113,14 +120,18 @@ router.post('/check-in', async (req, res) => {
     const now = new Date().toISOString();
     const confidence = randomInt(88, 100);
 
-    // Evaluate check-in time against policy (<= 09:00 IST -> verified, > 09:00 IST -> late)
+    // Evaluate check-in time against policy (<= 09:00 -> on-time, 09:00–09:15 -> grace, > 09:15 -> late)
     const scanEvaluation = evaluateScanStatus(new Date(), 'check_in');
-    const status = scanEvaluation === 'late' ? 'late' : 'verified';
+    // Out-of-boundary punches are recorded but flagged for admin review
+    const isInZone = !(inZone === false || inZone === 'false');
+    const status = !isInZone ? 'flagged' : (scanEvaluation === 'late' ? 'late' : 'verified');
+    const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : null;
+    const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [
         recordId,
         userId,
@@ -137,6 +148,8 @@ router.post('/check-in', async (req, res) => {
         confidence,
         status,
         tokenString,
+        cleanWorkMode,
+        cleanSiteRef,
       ]
     );
 
@@ -152,11 +165,18 @@ router.post('/check-in', async (req, res) => {
        WHERE ar.id = $1`,
       [recordId]
     );
+    const checkInMessage =
+      scanEvaluation === 'late'
+        ? 'Checked in (marked Late — after the 09:15 grace window)'
+        : scanEvaluation === 'grace'
+          ? 'Checked in within the grace window (09:00–09:15 AM)'
+          : 'Checked in on-time (Present)';
     res.json({
       success: true,
       record: sanitizeRecord(record),
       timing: scanEvaluation,
-      message: scanEvaluation === 'late' ? 'Checked in (marked Late after 09:00 AM)' : 'Checked in on-time (Present)',
+      zone: isInZone ? 'in_zone' : 'out_of_zone',
+      message: isInZone ? checkInMessage : `Outside geofence — punch recorded for admin review. ${checkInMessage}`,
     });
   } catch (err) {
     console.error('Check-in error:', err);
@@ -166,7 +186,7 @@ router.post('/check-in', async (req, res) => {
 
 // POST /api/attendance/check-out
 router.post('/check-out', async (req, res) => {
-  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp } = req.body;
+  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef } = req.body;
   const userId = req.user.id;
 
   const parsed = parseQRPayload(req.body);
@@ -195,13 +215,23 @@ router.post('/check-out', async (req, res) => {
       return res.status(400).json({ error: 'No active shift found to check out from.' });
     }
 
+    // Invalid sequence guard: cannot check out while a break is still open
+    const lastBreakStart = [...todayRecords].reverse().find((r) => r.record_type === 'break_start');
+    const lastBreakEnd = [...todayRecords].reverse().find((r) => r.record_type === 'break_end');
+    const isOnBreak = lastBreakStart && (!lastBreakEnd || new Date(lastBreakEnd.recorded_at) < new Date(lastBreakStart.recorded_at));
+    if (isOnBreak) {
+      return res.status(400).json({ error: 'You are on an active break — end the break before checking out.' });
+    }
+
     const recordId = `rec-${randomUUID()}`;
     const now = new Date().toISOString();
+    const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : null;
+    const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
       [
         recordId,
         userId,
@@ -218,6 +248,8 @@ router.post('/check-out', async (req, res) => {
         95,
         'verified',
         tokenString,
+        cleanWorkMode,
+        cleanSiteRef,
       ]
     );
 
@@ -401,6 +433,13 @@ router.post('/ot', async (req, res) => {
     if (action === 'end' && !isOtActive) {
       return res.status(400).json({ error: 'No active Overtime session found to stop.' });
     }
+    if (action === 'start') {
+      // Invalid sequence guard: OT cannot begin before the 17:00 IST workday end
+      const zonedNow = getZonedDateTime(new Date(), POLICY.TIMEZONE);
+      if (zonedNow.totalMinutes < timeToMinutes(POLICY.WORK_END)) {
+        return res.status(400).json({ error: 'Overtime can only start after 17:00 IST (workday end).' });
+      }
+    }
 
     const recordType = action === 'start' ? 'ot_start' : 'ot_end';
     const recordId = `rec-${randomUUID()}`;
@@ -517,11 +556,16 @@ router.post('/sync-batch', async (req, res) => {
   }
 
   const results = [];
+  const ALLOWED_TYPES = ['check_in', 'check_out', 'break_start', 'break_end', 'ot_start', 'ot_end'];
 
   for (const entry of offlineRecords) {
-    const { type, qrPayload, timestamp, deviceId: offlineDeviceId, latitude, longitude } = entry;
+    const { type, qrPayload, timestamp, deviceId: offlineDeviceId, latitude, longitude, workMode, siteRef, inZone } = entry;
     if (!type || !qrPayload) {
       results.push({ error: 'Missing type or qrPayload', entry });
+      continue;
+    }
+    if (!ALLOWED_TYPES.includes(type)) {
+      results.push({ error: `Unknown record type "${String(type).slice(0, 24)}"`, entry });
       continue;
     }
 
@@ -546,16 +590,19 @@ router.post('/sync-batch', async (req, res) => {
       );
 
       const isStillActive = tokenRow?.is_active === 1;
-      const confidence = isStillActive ? 85 : 45;
-      const status = isStillActive ? 'verified' : 'flagged';
+      const isOutOfZone = inZone === false || inZone === 'false';
+      const confidence = isStillActive && !isOutOfZone ? 85 : 45;
+      const status = isStillActive && !isOutOfZone ? 'verified' : 'flagged';
+      const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : null;
+      const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
 
       const recordId = `rec-${randomUUID()}`;
       const recordedAt = timestamp || new Date().toISOString();
 
       await db.runAsync(
         `INSERT INTO attendance_records 
-         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, is_offline_sync)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1)`,
+         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, is_offline_sync, work_mode, site_ref)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1,$16,$17)`,
         [
           recordId,
           userId,
@@ -572,6 +619,8 @@ router.post('/sync-batch', async (req, res) => {
           confidence,
           status,
           tokenString,
+          cleanWorkMode,
+          cleanSiteRef,
         ]
       );
 

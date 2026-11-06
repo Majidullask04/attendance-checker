@@ -17,8 +17,9 @@ const AuthContext = createContext(null);
 // or approval gate.
 // Set to false to immediately restore original login and Google authentication.
 // ============================================================================
-export const AUTH_BYPASS = true;
+export const AUTH_BYPASS = false;
 
+// eslint-disable-next-line react/only-export-components
 export const BYPASS_ADMIN_USER = {
   id: 'usr-admin-bypass',
   email: 'mrelectricalworks02@gmail.com',
@@ -98,14 +99,14 @@ export function AuthProvider({ children }) {
     const isAdmin = checkIsAdminEmail(email);
 
     // Scrape and clean user name from Google / Neon profile
-    const rawName = 
-      neonUser.name || 
-      neonUser.displayName || 
+    const rawName =
+      neonUser.name ||
+      neonUser.displayName ||
       neonUser.user_metadata?.full_name ||
       neonUser.user_metadata?.name ||
       neonUser.raw_user_meta_data?.full_name ||
       neonUser.raw_user_meta_data?.name ||
-      neonUser.user_name || 
+      neonUser.user_name ||
       neonUser.fullName;
 
     const cleanName = cleanUserName(rawName, email);
@@ -310,6 +311,7 @@ export function AuthProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react/only-export-components
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be inside AuthProvider');

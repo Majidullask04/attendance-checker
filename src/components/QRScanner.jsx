@@ -16,7 +16,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
     const qrCodeSuccessCallback = (decodedText) => {
       if (hasScannedRef.current) return;
       hasScannedRef.current = true;
-      
+
       // Stop scanner before calling onScan
       html5QrCode
         .stop()
@@ -78,12 +78,14 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
       scannerRef.current
         .stop()
         .then(() => scannerRef.current.clear())
-        .catch(() => {});
+        .catch(() => { });
     }
     const compact = {
       l: currentQRToken.locationId,
       t: currentQRToken.token || currentQRToken.tokenId,
       g: Math.floor(new Date(currentQRToken.generatedAt).getTime() / 1000),
+      exp: currentQRToken.exp,
+      sig: currentQRToken.sig,
     };
     onScan(JSON.stringify(compact));
   };
@@ -93,7 +95,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
       scannerRef.current
         .stop()
         .then(() => scannerRef.current.clear())
-        .catch(() => {});
+        .catch(() => { });
     }
     const fakeExpired = {
       t: 'tok_expired_old_9999',
@@ -122,7 +124,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
 
         <div className="scanner-viewport-wrap">
           <div id="qr-reader-container" className="scanner-viewport" />
-          
+
           <div className="scanner-guide-overlay">
             <div className="scanner-corner top-left" />
             <div className="scanner-corner top-right" />

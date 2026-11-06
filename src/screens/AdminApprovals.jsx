@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useAttendanceStore } from '../store/useStore';
@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
-  UserCheck,
   Lock,
   Check,
 } from 'lucide-react';
@@ -18,21 +17,21 @@ export default function AdminApprovals() {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadPending = async () => {
+  const loadPending = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await api.getPendingUsers();
       setPendingUsers(data.users || []);
-    } catch (err) {
+    } catch {
       addToast('Failed to load pending users', 'error');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
     if (isAdmin) loadPending();
-  }, [isAdmin]);
+  }, [isAdmin, loadPending]);
 
   const handleApprove = async (userId) => {
     try {
