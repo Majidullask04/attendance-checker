@@ -4,7 +4,7 @@ import { POLICY, timeToMinutes } from '../config/policy.js';
 import './DayTimeline.css';
 
 export default function DayTimeline() {
-  const now = useNow(5000); // refresh every 5s
+  const now = useNow(1000); // 1s IST chronometer — tabular readout refresh
 
   const currentMinutes = now.totalMinutes;
 
@@ -121,13 +121,13 @@ export default function DayTimeline() {
           </div>
         </div>
 
-        {/* Timeline Tick Labels */}
+        {/* Timeline Tick Labels (24h IST, mono tabular) */}
         <div className="timeline-ticks">
-          <span>06:00 AM</span>
-          <span>09:00 AM</span>
-          <span>01:50 PM</span>
-          <span>05:00 PM</span>
-          <span>08:00 PM</span>
+          <span>06:00</span>
+          <span>09:00</span>
+          <span>13:50</span>
+          <span>17:00</span>
+          <span>20:00</span>
         </div>
       </div>
     </div>

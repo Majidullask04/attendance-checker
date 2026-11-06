@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from './AuthContext';
 import GoogleAuthModal from '../components/GoogleAuthModal.jsx';
-import { Zap, Mail, KeyRound, ArrowRight, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { BrandLogo } from '../components/VantagePrimitives.jsx';
+import { Mail, KeyRound, ArrowRight, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 export default function LoginScreen({ onToggle }) {
   const { login, loginWithGoogle, authError } = useAuth();
@@ -66,14 +67,13 @@ export default function LoginScreen({ onToggle }) {
 
   return (
     <div className="login-page">
-      <div className="login-glow-bg" />
       <div className="login-card fade-in">
         <div className="login-header">
-          <div className="login-logo-icon">
-            <Zap size={22} className="zap-icon" />
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-md)' }}>
+            <BrandLogo darkChassis={false} />
           </div>
-          <h1 className="login-title">MrElectric</h1>
-          <p className="login-subtitle">Sign in to your attendance operations portal</p>
+          <h1 className="login-title">MR. ELECTRICAL WORKS</h1>
+          <p className="login-subtitle">Attendance &amp; field telemetry — sign in to your shift portal</p>
         </div>
 
         {displayedError && (
@@ -90,7 +90,7 @@ export default function LoginScreen({ onToggle }) {
           onClick={handleGoogleSignInClick}
           disabled={isGoogleLoading || isLoading}
         >
-          <svg className="google-icon" width="18" height="18" viewBox="0 0 24 24">
+          <svg className="google-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <path
               fill="#4285F4"
               d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -157,7 +157,7 @@ export default function LoginScreen({ onToggle }) {
         <div className="login-divider"><span>new team member?</span></div>
 
         <button type="button" className="btn-secondary" onClick={onToggle} style={{ width: '100%' }}>
-          Create New Employee Account
+          Create Employee Account
         </button>
 
         <div className="login-footer-info">

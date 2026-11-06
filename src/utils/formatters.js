@@ -206,6 +206,11 @@ export function renderAvatar(avatar, fallback = '') {
   const effectiveAvatar = avatar || fallback;
   if (!effectiveAvatar) return getInitials('');
 
+  // Emoji glyphs are not brand icons (Hallmark Floor 30a): derive initials instead.
+  if (typeof effectiveAvatar === 'string' && !/[\x20-\x7E]/.test(effectiveAvatar)) {
+    return getInitials('');
+  }
+
   if (
     typeof effectiveAvatar === 'string' &&
     (effectiveAvatar.startsWith('http://') ||

@@ -1,7 +1,8 @@
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useTimer } from '../hooks/useTimer.js';
-import { formatTime, formatDuration, getWeekDates, getEmployeeName, getEmployeeAvatar, renderAvatar } from '../utils/formatters.js';
+import { formatTime, formatDuration, getWeekDates, getEmployeeName, getEmployeeAvatar, renderAvatar, getInitials } from '../utils/formatters.js';
 import DayTimeline from '../components/DayTimeline.jsx';
+import { TelemetryCounter } from '../components/VantagePrimitives.jsx';
 import {
   Users,
   AlertTriangle,
@@ -22,7 +23,9 @@ function StatCard({ label, value, sub, color, icon }) {
     <div className={`stat-card stat-card--${color} interactive-item`}>
       <div className="stat-card-icon">{icon}</div>
       <div className="stat-card-body">
-        <div className="stat-card-value font-mono">{value}</div>
+        <div className="stat-card-value font-mono">
+          {typeof value === 'number' ? <TelemetryCounter value={value} /> : value}
+        </div>
         <div className="stat-card-label">{label}</div>
         {sub && <div className="stat-card-sub">{sub}</div>}
       </div>
@@ -363,7 +366,7 @@ export default function Dashboard({ store }) {
               className="btn-secondary btn-sm"
               onClick={() => setActiveScreen('team')}
             >
-              View Full Team →
+              View Full Team
             </button>
           </div>
 
@@ -377,7 +380,7 @@ export default function Dashboard({ store }) {
                 role="button"
                 tabIndex={0}
               >
-                <div className="team-quick-avatar">{renderAvatar(emp.avatar, '👤')}</div>
+                <div className="team-quick-avatar">{renderAvatar(emp.avatar, getInitials(emp.email || emp.name || emp.userName))}</div>
                 <div className="team-quick-info">
                   <div className="team-quick-name">{getEmployeeName(emp)}</div>
                   <div className="team-quick-dept">

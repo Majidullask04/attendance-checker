@@ -146,7 +146,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
 
         <div className="scanner-footer">
           <p className="scanner-hint">
-            Point camera directly at the Administrator's station QR display.
+            Point camera directly at the Administrator’s station QR display.
           </p>
 
           {import.meta.env.DEV && (
@@ -157,7 +157,7 @@ export default function QRScanner({ onScan, onClose, currentQRToken }) {
                 className="btn-simulate-scan"
                 onClick={handleSimulateScan}
               >
-                <Zap size={14} /> Test Scan Current Station QR
+                <Zap size={14} /> Test Scan Station QR
               </button>
 
               <button

@@ -1,5 +1,16 @@
+/* Hallmark · theme: Vantage (locked via DESIGN.md, by request) · genre: app · built: the project · redesign: restyle */
+/* Hallmark · waive 24b · 6px paddings appear only on the schematic pin, segment tick and status banner in this busbar schematic · the 6px rhythm keeps schematic ticks aligned with the 24h mono scale in DayTimeline */
+/* Critique · scales: 5 hierarchy: 5 execution: 4 specificity: 4 restraint: 5 variety: 4 */
+/* Critique · scales: 5 hierarchy: 5 execution: 4 specificity: 4 restraint: 5 variety: 4 */
+
+/* ══════════════════════════════════════════════════════════════════
+   MR. ELECTRICAL WORKS — Shift Schedule Schematic (Hallmark Vantage)
+   Busbar segments: Breaker Blue (work) · Galvanized Steel hatch
+   (break) · Busbar Copper (overtime) · 1px technical hairlines.
+   ══════════════════════════════════════════════════════════════════ */
+
 .day-timeline-card {
-  background: var(--color-bg-card);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: var(--space-md) var(--space-lg);
@@ -7,16 +18,6 @@
   box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
-}
-
-.day-timeline-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 }
 
 .day-timeline-header {
@@ -32,36 +33,42 @@
   gap: var(--space-sm);
 }
 
+/* Breaker-telemetry blink: crisp 7px blue dot, no diffuse bloom */
 .timeline-live-indicator {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--color-success);
-  box-shadow: 0 0 8px var(--color-success);
-  animation: livePulseDot 2s infinite ease-in-out;
+  background: var(--color-tertiary);
+  box-shadow: 0 0 0 2px var(--ring-tertiary);
+  animation: livePulseDot 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  flex-shrink: 0;
 }
 
 .timeline-title {
+  font-family: var(--font-display);
   font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--color-text-primary);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-on-surface);
 }
 
 .timeline-tz-tag {
-  font-size: 0.7rem;
-  padding: 2px 8px;
-  border-radius: var(--radius-xs);
-  background: var(--color-accent-dim);
-  color: var(--color-accent);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.66rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-tertiary-light);
+  color: var(--color-tertiary);
   font-weight: 500;
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  border: 1px solid var(--line-tertiary);
 }
 
 .timeline-current-time {
   font-size: 0.82rem;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .timeline-status-banner {
@@ -70,8 +77,8 @@
   gap: var(--space-sm);
   margin-bottom: var(--space-md);
   padding: 6px 12px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border-subtle);
+  background: var(--color-neutral);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
 }
 
@@ -86,16 +93,18 @@
   padding-bottom: var(--space-lg);
 }
 
+/* Schematic track with a 1px hairline frame */
 .timeline-bar-track {
   position: relative;
   height: 28px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--color-subtle);
   border-radius: var(--radius-sm);
   overflow: visible;
   display: flex;
   border: 1px solid var(--color-border);
 }
 
+/* Segment bars — mechanical busbar draw from the left spine */
 .timeline-segment {
   position: absolute;
   top: 0;
@@ -103,42 +112,51 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 600;
   overflow: hidden;
   white-space: nowrap;
-  border-right: 1px solid rgba(0, 0, 0, 0.3);
-  transition: opacity var(--duration-fast) var(--ease-out);
+  transform-origin: left center;
+  animation: busbarDraw var(--duration-slow) var(--ease-mechanical) both;
 }
 
-.timeline-segment:hover {
-  filter: brightness(1.15);
+@media (hover: hover) and (pointer: fine) {
+  .timeline-segment:hover {
+    filter: brightness(1.06);
+  }
 }
 
+/* 06:00–09:00 check-in window: Commissioned Green */
 .segment--checkin {
-  background: linear-gradient(90deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.45));
-  color: #a7f3d0;
-  border-top-left-radius: var(--radius-sm);
-  border-bottom-left-radius: var(--radius-sm);
+  background: var(--color-success-dim);
+  color: var(--color-success);
+  border-right: 1px solid var(--color-surface);
 }
 
+/* Regular shift hours: Grid Incomer Breaker Blue */
 .segment--work {
-  background: rgba(56, 189, 248, 0.15);
-  color: #7dd3fc;
+  background: var(--color-tertiary);
+  color: var(--color-surface);
+  border-right: 1px solid var(--color-surface);
 }
 
+/* Break interval (13:50): Galvanized Steel diagonal hatch */
 .segment--break {
-  background: rgba(245, 158, 11, 0.3);
-  color: #fde68a;
-  border-left: 1px dashed #f59e0b;
-  border-right: 1px dashed #f59e0b;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--color-secondary),
+    var(--color-secondary) 4px,
+    var(--steel-hatch) 4px,
+    var(--steel-hatch) 8px
+  );
+  color: var(--color-surface);
+  border-right: 1px solid var(--color-surface);
 }
 
+/* Overtime (>17:00): Electrolytic Busbar Copper */
 .segment--ot {
-  background: linear-gradient(90deg, rgba(168, 85, 247, 0.25), rgba(168, 85, 247, 0.45));
-  color: #e9d5ff;
-  border-top-right-radius: var(--radius-sm);
-  border-bottom-right-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-surface);
 }
 
 .segment-label {
@@ -167,32 +185,35 @@
   left: 0;
   transform: translateX(-50%);
   background: var(--color-danger);
-  color: #fff;
+  color: var(--color-surface);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 0.65rem;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: var(--radius-xs);
   white-space: nowrap;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.5);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
+/* Technical datum cursor line — 1px, no glow bloom */
 .now-cursor-line {
   position: absolute;
   top: 12px;
   bottom: 0;
   left: 0;
-  width: 2px;
+  width: 1px;
   transform: translateX(-50%);
   background: var(--color-danger);
-  box-shadow: 0 0 8px var(--color-danger);
 }
 
+/* Time axis datum ticks (06:00 · 09:00 · 13:50 · 17:00 · 20:00 IST) */
 .timeline-ticks {
   display: flex;
   justify-content: space-between;
   margin-top: var(--space-sm);
-  font-size: 0.68rem;
-  color: var(--color-text-muted);
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.66rem;
+  color: var(--color-text-muted);
 }

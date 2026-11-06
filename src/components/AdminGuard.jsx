@@ -39,7 +39,7 @@ export default function AdminGuard({ onBack, children }) {
           style={{ width: '100%', justifyContent: 'center' }}
         >
           <ArrowLeft size={16} />
-          <span>Return to My Attendance Dashboard</span>
+          <span>Return to My Dashboard</span>
         </button>
       </div>
     </div>

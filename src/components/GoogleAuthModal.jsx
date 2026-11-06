@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, ArrowRight, ShieldCheck, UserPlus } from 'lucide-react';
 import { checkIsAdminEmail } from '../lib/neonAuth.js';
-import { cleanUserName, renderAvatar } from '../utils/formatters.js';
+import { cleanUserName, renderAvatar, getInitials } from '../utils/formatters.js';
 
 const PRESET_GOOGLE_ACCOUNTS = [
   {
@@ -9,7 +9,7 @@ const PRESET_GOOGLE_ACCOUNTS = [
     email: 'mrelectricalworks02@gmail.com',
     role: 'Admin',
     department: 'Management & HQ',
-    avatar: '⚡',
+    avatar: '',
     badge: 'Verified Admin',
   },
   {
@@ -17,7 +17,7 @@ const PRESET_GOOGLE_ACCOUNTS = [
     email: 'arjun.mehta@gmail.com',
     role: 'Technician',
     department: 'Electrical Operations',
-    avatar: '👷',
+    avatar: '',
     badge: 'Staff',
   },
   {
@@ -25,7 +25,7 @@ const PRESET_GOOGLE_ACCOUNTS = [
     email: 'priya.sharma@gmail.com',
     role: 'Technician',
     department: 'HVAC & Inspection',
-    avatar: '👩‍🔧',
+    avatar: '',
     badge: 'Staff',
   },
 ];
@@ -56,7 +56,7 @@ export default function GoogleAuthModal({ isOpen, onClose, onSelectAccount }) {
     onSelectAccount({
       email,
       name,
-      avatar: isAdmin ? '⚡' : '👷',
+      avatar: '',
       department: isAdmin ? 'Executive Admin' : 'Field Operations',
     });
   };
@@ -71,7 +71,7 @@ export default function GoogleAuthModal({ isOpen, onClose, onSelectAccount }) {
       >
         <div className="google-auth-header">
           <div className="google-brand">
-            <svg className="google-icon-lg" width="24" height="24" viewBox="0 0 24 24">
+            <svg className="google-icon-lg" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 fill="#4285F4"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -91,7 +91,7 @@ export default function GoogleAuthModal({ isOpen, onClose, onSelectAccount }) {
             </svg>
             <div>
               <h2 className="google-modal-title">Sign in with Google</h2>
-              <p className="google-modal-sub">Choose an account to continue to MrElectric</p>
+              <p className="google-modal-sub">Choose an account to continue to MR. ELECTRICAL WORKS</p>
             </div>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close">
@@ -109,7 +109,7 @@ export default function GoogleAuthModal({ isOpen, onClose, onSelectAccount }) {
                   className="google-account-item interactive-item"
                   onClick={() => handleSelectPreset(acc)}
                 >
-                  <div className="google-account-avatar">{renderAvatar(acc.avatar, '👤')}</div>
+                  <div className="google-account-avatar">{renderAvatar(acc.avatar, getInitials(acc.email || acc.name))}</div>
                   <div className="google-account-info">
                     <div className="google-account-name">{acc.name}</div>
                     <div className="google-account-email font-mono">{acc.email}</div>
@@ -131,7 +131,7 @@ export default function GoogleAuthModal({ isOpen, onClose, onSelectAccount }) {
               onClick={() => setIsCustomMode(true)}
             >
               <UserPlus size={16} />
-              <span>Sign in with a different Google email</span>
+              <span>Use another email</span>
             </button>
           </div>
         ) : (

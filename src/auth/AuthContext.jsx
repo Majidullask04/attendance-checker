@@ -25,7 +25,7 @@ export const BYPASS_ADMIN_USER = {
   name: 'Admin',
   role: 'admin',
   department: 'Management',
-  avatar: '⚡',
+  avatar: '',
   deviceId: 'web-client-bypass',
   isApproved: 1,
   isAdminVerified: true,
@@ -109,7 +109,7 @@ export function AuthProvider({ children }) {
       neonUser.fullName;
 
     const cleanName = cleanUserName(rawName, email);
-    const avatar = neonUser.avatar || neonUser.image || neonUser.picture || neonUser.user_metadata?.avatar_url || neonUser.raw_user_meta_data?.avatar_url || (isAdmin ? '⚡' : '👷');
+    const avatar = neonUser.avatar || neonUser.image || neonUser.picture || neonUser.user_metadata?.avatar_url || neonUser.raw_user_meta_data?.avatar_url || '';
 
     try {
       // Sync with application backend to verify DB record and approval status
@@ -146,7 +146,7 @@ export function AuthProvider({ children }) {
             id: `neon-${email}`,
             email: email,
             name: cleanName,
-            avatar: avatar || '⚡',
+            avatar: avatar || '',
             role: 'admin',
             department: 'Management',
             isApproved: true,
@@ -207,7 +207,7 @@ export function AuthProvider({ children }) {
           const syncResult = await api.neonSync({
             email: email,
             name: cleanName,
-            avatar: customPayload.avatar || (isAdmin ? '⚡' : '👷'),
+            avatar: customPayload.avatar || '',
           });
 
           if (syncResult?.token) {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { formatTime, formatDuration, getEmployeeName, renderAvatar } from '../utils/formatters.js';
+import { formatTime, formatDuration, getEmployeeName, renderAvatar, getInitials } from '../utils/formatters.js';
 import { api } from '../api/client.js';
 import {
   Download,
@@ -92,7 +92,7 @@ export default function Team({ store }) {
         <div>
           <h1 className="screen-title">Team Operations & Attendance Ledger</h1>
           <p className="screen-sub">
-            Monitor daily presence, 6–9 AM check-ins, afternoon breaks, and overtime reports.
+            Monitor daily presence, 6-9 AM check-ins, afternoon breaks, and overtime reports.
           </p>
         </div>
 
@@ -200,7 +200,7 @@ export default function Team({ store }) {
                     >
                       <td>
                         <div className="emp-cell">
-                          <span className="emp-avatar">{renderAvatar(emp.avatar, '👷')}</span>
+                          <span className="emp-avatar">{renderAvatar(emp.avatar, getInitials(emp.email || emp.name || emp.userName))}</span>
                           <div>
                             <div className="emp-name">{getEmployeeName(emp)}</div>
                             <div className="emp-email font-mono">{emp.email}</div>
@@ -272,7 +272,7 @@ export default function Team({ store }) {
                           </button>
                           <button
                             className="btn-tiny"
-                            style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '6px' }}
+                            style={{ backgroundColor: 'var(--color-danger)', color: 'var(--color-surface)', border: 'none', padding: 'var(--space-sm)' }}
                             title="Remove User"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -310,7 +310,7 @@ export default function Team({ store }) {
             >
               <div className={`team-card-status-bar status-bar--${emp.status}`} />
               <div className="team-card-top">
-                <div className="team-card-avatar">{renderAvatar(emp.avatar, '👷')}</div>
+                <div className="team-card-avatar">{renderAvatar(emp.avatar, getInitials(emp.email || emp.name || emp.userName))}</div>
                 <div className="team-card-info">
                   <div className="team-card-name">{getEmployeeName(emp)}</div>
                   <div className="team-card-dept">
@@ -321,7 +321,7 @@ export default function Team({ store }) {
                   {emp.statusLabel || emp.status}
                   <button
                     className="btn-tiny"
-                    style={{ padding: '2px 4px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', marginLeft: '4px' }}
+                    style={{ padding: 'var(--space-xs) var(--space-xs)', backgroundColor: 'transparent', color: 'var(--color-danger)', border: 'none', marginLeft: 'var(--space-xs)' }}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (window.confirm(`Are you sure you want to completely remove ${getEmployeeName(emp)}?`)) {

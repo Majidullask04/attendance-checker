@@ -6,9 +6,8 @@ export default function PendingApproval() {
 
   return (
     <div className="login-page">
-      <div className="login-glow-bg" />
       <div className="login-card fade-in" style={{ textAlign: 'center', maxWidth: '440px' }}>
-        <div className="pending-icon-wrap" style={{ margin: '0 auto 16px', width: '56px', height: '56px', borderRadius: '50%', background: 'var(--color-warning-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-warning)' }}>
+        <div className="pending-icon-wrap" style={{ margin: '0 auto 16px', width: '56px', height: '56px', borderRadius: 'var(--radius-sm)', background: 'var(--color-warning-dim)', border: '1px solid var(--color-warning)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-warning)' }}>
           <Clock size={28} />
         </div>
         <h1 className="login-title">Account Pending Approval</h1>

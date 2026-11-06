@@ -9,7 +9,6 @@ import DayTimeline from '../components/DayTimeline.jsx';
 import {
   Camera,
   Coffee,
-  Play,
   FastForward,
   Square,
   MapPin,
@@ -17,8 +16,6 @@ import {
   ClipboardList,
   AlertTriangle,
   WifiOff,
-  CheckCircle2,
-  Zap,
 } from 'lucide-react';
 
 function BreakCountdown({ breakStartTime }) {
@@ -204,7 +201,7 @@ export default function CheckIn({ store }) {
                 {attendanceState === 'checked_in'
                   ? 'Checked In (Active Shift)'
                   : attendanceState === 'on_break'
-                    ? 'On Break (30–40 min)'
+                    ? 'On Break (30-40 min)'
                     : attendanceState === 'ot_active'
                       ? 'Active Overtime (OT)'
                       : attendanceState === 'checking_in'
@@ -282,7 +279,7 @@ export default function CheckIn({ store }) {
                     disabled={isLoading}
                   >
                     <span className="btn-icon"><FastForward size={18} /></span>
-                    <span>Scan QR to Start Overtime (OT)</span>
+                    <span>Scan to Start Overtime</span>
                   </button>
                 )}
               </>
@@ -296,7 +293,7 @@ export default function CheckIn({ store }) {
                 disabled={isLoading}
               >
                 <span className="btn-icon"><Camera size={18} /></span>
-                <span>Scan Station QR to Resume Shift</span>
+                <span>Scan to Resume Shift</span>
               </button>
             )}
 
@@ -308,7 +305,7 @@ export default function CheckIn({ store }) {
                 disabled={isLoading}
               >
                 <span className="btn-icon"><Square size={18} /></span>
-                <span>Scan Station QR to Stop Overtime</span>
+                <span>Scan to Stop Overtime</span>
               </button>
             )}
           </div>
@@ -317,7 +314,7 @@ export default function CheckIn({ store }) {
           {!isOnline && (
             <div className="offline-banner">
               <WifiOff size={16} className="text-danger" />
-              <span>Network Offline — Real-time server sync paused. Queued locally.</span>
+              <span>Network offline. Real-time server sync paused. Queued locally.</span>
             </div>
           )}
         </div>
@@ -339,12 +336,12 @@ export default function CheckIn({ store }) {
 
           <div className="info-card">
             <div className="info-card-title">
-              <Clock size={16} className="text-warning" /> Today's Shift Rules
+              <Clock size={16} className="text-warning" /> Today’s Shift Rules
             </div>
             <div className="info-card-items">
               <div className="info-card-row">
                 <span className="info-card-row-label">Check-In Window</span>
-                <span className="info-card-row-val text-success">06:00 – 09:00 AM (On-time)</span>
+                <span className="info-card-row-val text-success">06:00 - 09:00 AM (On-time)</span>
               </div>
               <div className="info-card-row">
                 <span className="info-card-row-label">Late Threshold</span>
@@ -352,7 +349,7 @@ export default function CheckIn({ store }) {
               </div>
               <div className="info-card-row">
                 <span className="info-card-row-label">Afternoon Break</span>
-                <span className="info-card-row-val text-accent">01:50 PM (30–40 min max)</span>
+                <span className="info-card-row-val text-accent">01:50 PM (30-40 min max)</span>
               </div>
               <div className="info-card-row">
                 <span className="info-card-row-label">Resume Requirement</span>

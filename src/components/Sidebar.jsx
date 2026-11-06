@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { getEmployeeName, renderAvatar } from '../utils/formatters';
+import { getEmployeeName, renderAvatar, getInitials } from '../utils/formatters';
+import { BrandLogo } from './VantagePrimitives.jsx';
 import {
   LayoutDashboard,
   QrCode,
@@ -11,7 +12,6 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Zap,
   X,
 } from 'lucide-react';
 
@@ -88,18 +88,10 @@ export default function Sidebar({
       )}
 
       <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''} ${isMobileOpen ? 'sidebar--mobile-open' : ''}`}>
-        {/* Brand Header */}
+        {/* Brand Header — dark readout chassis */}
         <div className="sidebar-header">
           <div className="sidebar-logo">
-            <div className="sidebar-logo-icon">
-              <Zap size={18} className="zap-icon" />
-            </div>
-            {(!collapsed || isMobileOpen) && (
-              <div className="sidebar-logo-text">
-                <span className="sidebar-logo-name">MrElectric</span>
-                <span className="sidebar-logo-sub">Attendance Ops</span>
-              </div>
-            )}
+            <BrandLogo compact={collapsed && !isMobileOpen} darkChassis={true} />
           </div>
 
           {/* Desktop collapse button */}
@@ -125,7 +117,7 @@ export default function Sidebar({
         {/* User Identity Card */}
         {currentUser && (
           <div className="sidebar-user">
-            <div className="sidebar-user-avatar">{renderAvatar(currentUser.avatar, '👤')}</div>
+            <div className="sidebar-user-avatar">{renderAvatar(currentUser.avatar, getInitials(currentUser.email || getEmployeeName(currentUser)))}</div>
             {(!collapsed || isMobileOpen) && (
               <div className="sidebar-user-info">
                 <div className="sidebar-user-name" title={getEmployeeName(currentUser)}>

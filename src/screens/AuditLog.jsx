@@ -143,7 +143,7 @@ export default function AuditLog({ store }) {
       {flagged.length > 0 && (
         <div className="audit-section">
           <h3 className="section-title text-danger">
-            <AlertTriangle size={16} /> Attention Required — Low Confidence Scans
+            <AlertTriangle size={16} /> Attention Required: Low Confidence Scans
           </h3>
           <div className="records-group stagger-group">
             {flagged.map((r) => {
@@ -281,13 +281,13 @@ export default function AuditLog({ store }) {
                         : type === 'check_out'
                         ? '▼ Check Out'
                         : type === 'break_start'
-                        ? '☕ Break Start'
+                        ? 'Break Start'
                         : type === 'break_end'
-                        ? '▶ Break Resume'
+                        ? 'Break Resume'
                         : type === 'ot_start'
-                        ? '⚡ OT Start'
+                        ? 'Overtime Start'
                         : type === 'ot_end'
-                        ? '⏹ OT Stop'
+                        ? 'Overtime Stop'
                         : type}
                     </span>
                   </span>

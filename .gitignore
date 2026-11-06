@@ -37,3 +37,6 @@ backend/database.sqlite*
 *.njsproj
 *.sln
 *.sw?
+
+# Local Hallmark skill reference copies (not project source)
+.hallmark-refs/
