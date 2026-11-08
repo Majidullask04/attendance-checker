@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useTimer } from '../hooks/useTimer.js';
 import { formatTime } from '../utils/formatters.js';
@@ -111,15 +111,16 @@ export default function CheckIn({ store }) {
   } = store;
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [scannerMode, setScannerMode] = useState('auto'); // auto | break_end | ot_start | ot_end
+  const [scannerMode, setScannerMode] = useState('auto'); // auto | check_in | check_out | break_end | ot_start | ot_end
   const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
   const [pendingSelfie, setPendingSelfie] = useState(null);
+  const pendingModeRef = useRef('check_in');
   const { faceEnrollment, faceVerifyEnabled, setFaceVerifyEnabled, loadFaceEnrollment } = store;
 
   const recordedTime = currentCheckIn?.recorded_at || currentCheckIn?.recordedAt;
   const shiftTimer = useTimer(recordedTime);
 
-  // Face verify is only wired into the check-in path (Layer 2 selfie capture)
+  // Layer 2: face verification gates every punch when enabled + online
   const faceApplicable = faceVerifyEnabled && isOnline && !isOfflineUnsupported();
 
   function isOfflineUnsupported() {
@@ -145,14 +146,27 @@ export default function CheckIn({ store }) {
     setIsScannerOpen(true);
   };
 
+  // Guard rail: a punch first passes the 1:1 face gate, then the station QR scan
+  const requestPunch = useCallback(
+    (mode) => {
+      if (faceApplicable) {
+        pendingModeRef.current = mode;
+        setIsFaceModalOpen(true);
+      } else {
+        openScanner(mode);
+      }
+    },
+    [faceApplicable]
+  );
+
   const handleFaceCaptured = useCallback(
     (selfie) => {
       setPendingSelfie(selfie);
       setIsFaceModalOpen(false);
       // Refresh enrollment locally if this capture enrolled the employee
       loadFaceEnrollment();
-      // Continue into the required station QR scan
-      setScannerMode('check_in');
+      // Continue into the required station QR scan for the intended punch
+      setScannerMode(pendingModeRef.current || 'check_in');
       setIsScannerOpen(true);
     },
     [loadFaceEnrollment]
@@ -163,17 +177,17 @@ export default function CheckIn({ store }) {
       setIsScannerOpen(false);
 
       if (scannerMode === 'break_end' || attendanceState === 'on_break') {
-        await endBreak(scannedString);
+        await endBreak(scannedString, pendingSelfie);
       } else if (scannerMode === 'ot_start') {
-        await startOT(scannedString);
+        await startOT(scannedString, pendingSelfie);
       } else if (scannerMode === 'ot_end' || attendanceState === 'ot_active') {
-        await endOT(scannedString);
+        await endOT(scannedString, pendingSelfie);
       } else if (attendanceState === 'idle') {
         await checkInWithQR(scannedString, pendingSelfie);
-        setPendingSelfie(null);
       } else if (attendanceState === 'checked_in') {
-        await checkOutWithQR(scannedString);
+        await checkOutWithQR(scannedString, pendingSelfie);
       }
+      setPendingSelfie(null);
     },
     [scannerMode, attendanceState, pendingSelfie, endBreak, startOT, endOT, checkInWithQR, checkOutWithQR]
   );
@@ -324,7 +338,7 @@ export default function CheckIn({ store }) {
               <button
                 id="btn-open-scanner"
                 className="btn-action btn-checkin"
-                onClick={() => (faceApplicable ? setIsFaceModalOpen(true) : openScanner('check_in'))}
+                onClick={() => (faceApplicable ? requestPunch('check_in') : openScanner('check_in'))}
                 disabled={isLoading}
               >
                 <span className="btn-icon"><Camera size={18} /></span>
@@ -353,7 +367,7 @@ export default function CheckIn({ store }) {
                   <button
                     id="btn-scan-checkout"
                     className="btn-action btn-checkout flex-1"
-                    onClick={() => openScanner('check_out')}
+                    onClick={() => requestPunch('check_out')}
                     disabled={isLoading}
                   >
                     <span className="btn-icon"><Camera size={18} /></span>
@@ -366,7 +380,7 @@ export default function CheckIn({ store }) {
                   <button
                     id="btn-start-ot"
                     className="btn-action btn-ot"
-                    onClick={() => openScanner('ot_start')}
+                    onClick={() => requestPunch('ot_start')}
                     disabled={isLoading}
                   >
                     <span className="btn-icon"><FastForward size={18} /></span>
@@ -380,7 +394,7 @@ export default function CheckIn({ store }) {
               <button
                 id="btn-resume-break"
                 className="btn-action btn-checkin"
-                onClick={() => openScanner('break_end')}
+                onClick={() => requestPunch('break_end')}
                 disabled={isLoading}
               >
                 <span className="btn-icon"><Camera size={18} /></span>
@@ -392,7 +406,7 @@ export default function CheckIn({ store }) {
               <button
                 id="btn-stop-ot"
                 className="btn-action btn-checkout"
-                onClick={() => openScanner('ot_end')}
+                onClick={() => requestPunch('ot_end')}
                 disabled={isLoading}
               >
                 <span className="btn-icon"><Square size={18} /></span>
@@ -524,10 +538,12 @@ export default function CheckIn({ store }) {
         />
       )}
 
-      {/* Layer 2: Face Capture (liveness + 1:1 match) */}
+      {/* Layer 2: Face Capture (liveness + side-by-side 1:1 match) */}
       {isFaceModalOpen && (
         <FaceCaptureModal
           enrolledSignature={faceEnrollment.signature}
+          descriptor={faceEnrollment.descriptor}
+          referencePhoto={faceEnrollment.referencePhoto}
           onCapture={handleFaceCaptured}
           onClose={() => setIsFaceModalOpen(false)}
         />

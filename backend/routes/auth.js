@@ -4,10 +4,24 @@ import bcrypt from 'bcrypt';
 import db from '../db.js';
 import { signToken, verifyToken, requireAdmin } from '../middleware/auth.js';
 import { isInvalidName, cleanUserName } from '../utils/formatters.js';
+import { buildFaceStatus, writeAudit } from '../utils/audit.js';
+import {
+  FACE_DESCRIPTOR_LENGTH as DESCRIPTOR_LENGTH,
+  LEGACY_FACE_SIGNATURE_LENGTH,
+  parseStoredDescriptor,
+  verifyFaceDescriptor,
+  validateFaceEnrollmentPayload,
+  validateFaceVerifyPayload,
+} from '../utils/faceVerifyServer.js';
 
 const router = Router();
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'mrelectricalworks02@gmail.com').toLowerCase();
 const SALT_ROUNDS = 12;
+
+// ── Helper: attach biometric face status to a user row for client payloads ──
+function withFaceStatus(user) {
+  return { ...user, ...buildFaceStatus(user) };
+}
 
 // ── Helper: hash password ───────────────────────────────────────────────────
 async function hashPassword(plain) {
@@ -111,7 +125,7 @@ router.post('/login', async (req, res) => {
     const token = signToken(user);
     res.json({
       token,
-      user: {
+      user: withFaceStatus({
         id: user.id,
         email: user.email,
         name: user.name,
@@ -120,7 +134,7 @@ router.post('/login', async (req, res) => {
         avatar: user.avatar,
         deviceId: user.device_id,
         isApproved: user.is_approved,
-      },
+      }),
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -200,7 +214,7 @@ router.post('/neon-sync', async (req, res) => {
     const token = signToken(user);
     res.json({
       token,
-      user: {
+      user: withFaceStatus({
         id: user.id,
         email: user.email,
         name: cleanName,
@@ -209,7 +223,7 @@ router.post('/neon-sync', async (req, res) => {
         avatar: user.avatar,
         deviceId: user.device_id,
         isApproved: user.is_approved,
-      },
+      }),
     });
   } catch (err) {
     console.error('Neon sync error:', err);
@@ -251,7 +265,7 @@ router.get('/me', verifyToken, async (req, res) => {
     }
 
     res.json({
-      user: {
+      user: withFaceStatus({
         id: user.id,
         email: user.email,
         name: safeName,
@@ -260,7 +274,8 @@ router.get('/me', verifyToken, async (req, res) => {
         avatar: user.avatar,
         deviceId: user.device_id,
         isApproved: user.is_approved,
-      },
+        referencePhoto: user.reference_photo || null,
+      }),
     });
   } catch {
     res.status(500).json({ error: 'Failed to fetch user profile.' });
@@ -271,7 +286,7 @@ router.get('/me', verifyToken, async (req, res) => {
 router.get('/pending', verifyToken, requireAdmin, async (req, res) => {
   try {
     const users = await db.allAsync(
-      `SELECT id, email, name, department, avatar, created_at FROM users WHERE is_approved = 0 AND role = 'user' ORDER BY created_at DESC`
+      `SELECT id, email, name, department, avatar, reference_photo, created_at FROM users WHERE is_approved = 0 AND role = 'user' ORDER BY created_at DESC`
     );
     const cleanedUsers = (users || []).map((u) => {
       const safeName = cleanUserName(u.name, u.email);
@@ -384,6 +399,157 @@ router.put('/profile', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Update profile error:', err);
     res.status(500).json({ error: 'Failed to update profile.' });
+  }
+});
+
+// ── POST /api/auth/enroll-face ─────────────────────────────────────────────
+// Per-employee reference photo + 128-D biometric descriptor enrollment.
+// Only accepted while the account is not yet face-enrolled (use the admin
+// reset endpoint to re-enroll).
+router.post('/enroll-face', verifyToken, async (req, res) => {
+  const { referencePhoto, faceDescriptor, fallbackSignature } = req.body || {};
+  const { id: userId, email: userEmail } = req.user;
+
+  const validation = validateFaceEnrollmentPayload({
+    referencePhoto,
+    descriptor: faceDescriptor,
+    descriptorLength: DESCRIPTOR_LENGTH,
+  });
+  if (!validation.ok) {
+    return res.status(400).json({ error: validation.error });
+  }
+
+  const fallbackOk =
+    Array.isArray(fallbackSignature) &&
+    fallbackSignature.length === LEGACY_FACE_SIGNATURE_LENGTH &&
+    fallbackSignature.every((v) => typeof v === 'number' && Number.isFinite(v));
+
+  try {
+    const user = await db.getAsync(`SELECT id, email, face_enrolled FROM users WHERE id = $1`, [userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'User record not found.' });
+    }
+    if (user.face_enrolled === 1) {
+      return res.status(409).json({
+        error: 'Face ID is already enrolled for this account. Ask an administrator to reset it before re-enrolling.',
+        code: 'ALREADY_ENROLLED',
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    await db.runAsync(
+      `UPDATE users
+       SET reference_photo = $1, face_descriptor = $2, face_enrolled = 1, face_enrolled_at = $3
+       WHERE id = $4`,
+      [referencePhoto, JSON.stringify(faceDescriptor), nowIso, userId]
+    );
+    if (fallbackOk) {
+      await db.runAsync(`UPDATE users SET face_signature = $1 WHERE id = $2`, [JSON.stringify(fallbackSignature), userId]);
+    }
+
+    await writeAudit({
+      actorEmail: userEmail,
+      action: 'ENROLL_FACE_ID',
+      entityType: 'USER',
+      entityId: userId,
+      details: `Biometric reference photo + ${DESCRIPTOR_LENGTH}-D face descriptor enrolled`,
+    });
+
+    res.status(201).json(buildFaceStatus({ face_enrolled: 1, face_enrolled_at: nowIso, reference_photo: referencePhoto }));
+  } catch (err) {
+    console.error('Face enrollment error:', err);
+    res.status(500).json({ error: 'Server error during face enrollment.' });
+  }
+});
+
+// ── POST /api/auth/verify-face ─────────────────────────────────────────────
+// Authenticated 1:1 verification of a live descriptor against the employee's
+// stored descriptor. Used for biometric re-verification outside a punch.
+router.post('/verify-face', verifyToken, async (req, res) => {
+  const { liveDescriptor, livenessPassed } = req.body || {};
+  const { id: userId, email: userEmail } = req.user;
+
+  const validation = validateFaceVerifyPayload({ liveDescriptor });
+  if (!validation.ok) {
+    return res.status(400).json({ error: validation.error });
+  }
+
+  try {
+    const user = await db.getAsync(
+      `SELECT id, email, name, face_descriptor, face_signature, face_enrolled FROM users WHERE id = $1`,
+      [userId]
+    );
+    if (!user) {
+      return res.status(404).json({ error: 'User record not found.' });
+    }
+
+    const storedDescriptor = parseStoredDescriptor(user.face_descriptor) || parseStoredDescriptor(user.face_signature);
+    if (!storedDescriptor) {
+      return res.status(409).json({
+        error: 'No face enrollment found. Complete Face ID enrollment before verification.',
+        code: 'NOT_ENROLLED',
+      });
+    }
+
+    const result = verifyFaceDescriptor(storedDescriptor, liveDescriptor);
+    if (result.incomplete) {
+      return res.status(400).json({ error: `Descriptor verification unavailable: ${result.reason}.` });
+    }
+
+    if (!result.valid || livenessPassed !== true) {
+      await writeAudit({
+        actorEmail: userEmail,
+        action: 'FACE_MISMATCH_BLOCKED',
+        entityType: 'USER',
+        entityId: userId,
+        details: `1:1 verification failed (${result.method}, match ${result.matchPct ?? 0}%, distance ${result.distance ?? 'n/a'}, liveness ${livenessPassed === true ? 'OK' : 'MISSING'})`,
+      });
+      return res.status(403).json({
+        error: 'Face does not match enrolled employee photo.',
+        code: 'FACE_MISMATCH',
+      });
+    }
+
+    res.json({
+      verified: true,
+      matchScore: result.matchScore,
+      matchPct: result.matchPct,
+      distance: result.distance,
+      method: result.method,
+    });
+  } catch (err) {
+    console.error('Face verification error:', err);
+    res.status(500).json({ error: 'Server error during face verification.' });
+  }
+});
+
+// ── POST /api/auth/reset-face/:userId  (admin only) ────────────────────────
+// Clears an employee's enrollment so they can re-enroll a new reference photo.
+router.post('/reset-face/:userId', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const target = await db.getAsync(`SELECT id, email, name FROM users WHERE id = $1`, [req.params.userId]);
+    if (!target) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    await db.runAsync(
+      `UPDATE users SET reference_photo = NULL, face_descriptor = NULL, face_signature = NULL,
+         face_enrolled = 0, face_enrolled_at = NULL WHERE id = $1`,
+      [target.id]
+    );
+
+    await writeAudit({
+      actorEmail: req.user.email,
+      action: 'FACE_ID_RESET',
+      entityType: 'USER',
+      entityId: target.id,
+      details: `Face ID reset for ${target.name} (${target.email}) — re-enrollment required`,
+    });
+
+    res.json({ message: `Face ID cleared for ${target.name}. The employee can now re-enroll.` });
+  } catch (err) {
+    console.error('Face reset error:', err);
+    res.status(500).json({ error: 'Failed to reset face enrollment.' });
   }
 });
 

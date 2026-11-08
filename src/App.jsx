@@ -5,6 +5,7 @@ import { AuthProvider, useAuth, AUTH_BYPASS } from './auth/AuthContext.jsx';
 import LoginScreen from './auth/LoginScreen.jsx';
 import SignupScreen from './auth/SignupScreen.jsx';
 import PendingApproval from './auth/PendingApproval.jsx';
+import FaceEnrollmentScreen from './auth/FaceEnrollmentScreen.jsx';
 import { useAttendanceStore } from './store/useStore.js';
 import { getEmployeeName, renderAvatar, getInitials } from './utils/formatters.js';
 import Sidebar from './components/Sidebar.jsx';
@@ -55,6 +56,12 @@ function AuthGate() {
     return mode === 'login'
       ? <LoginScreen onToggle={() => setMode('signup')} />
       : <SignupScreen onToggle={() => setMode('login')} />;
+  }
+  
+  // Stage 3 of the auth lifecycle: an approved employee who has not yet
+  // enrolled a Face ID reference photo is routed to enrollment first.
+  if (!user.faceEnrolled) {
+    return <FaceEnrollmentScreen />;
   }
   
   return <AppContent />;

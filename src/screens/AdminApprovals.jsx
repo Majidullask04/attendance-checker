@@ -259,10 +259,22 @@ export default function AdminApprovals() {
                     <tr key={u.id} className="interactive-item">
                       <td>
                         <div className="user-cell">
-                          <div className="user-avatar">{renderAvatar(u.avatar, getInitials(u.email || u.name))}</div>
+                          {u.reference_photo ? (
+                            <img
+                              src={u.reference_photo}
+                              alt={`Reference ID photo for ${getEmployeeName(u)}`}
+                              className="approval-reference-photo"
+                              title="Employee-enrolled Reference ID Photo — visually confirm identity before approving"
+                            />
+                          ) : (
+                            <div className="user-avatar">{renderAvatar(u.avatar, getInitials(u.email || u.name))}</div>
+                          )}
                           <div>
                             <div className="user-name">{getEmployeeName(u)}</div>
                             <div className="user-email font-mono">{u.email}</div>
+                            {u.reference_photo && (
+                              <div className="emp-faceid font-mono emp-faceid--ok">REFERENCE PHOTO ON FILE</div>
+                            )}
                           </div>
                         </div>
                       </td>

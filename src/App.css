@@ -3732,3 +3732,221 @@
   border: 1px solid #2a2e34;
   flex-shrink: 0;
 }
+
+/* ── Stage 3: Face ID Enrollment screen (auth lifecycle) ─────────────────── */
+.face-enroll-screen {
+  min-height: 100vh;
+  background: var(--color-surface);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  overflow-y: auto;
+}
+
+.face-enroll-shell {
+  width: min(860px, 96vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.face-enroll-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  background: #FCFCFD;
+  border: 1px solid #D7DBE0;
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+}
+
+.face-enroll-title {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.face-enroll-title h1 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #121417;
+  margin: 0 0 4px;
+}
+
+.face-enroll-title p {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+  max-width: 480px;
+}
+
+.face-enroll-idcard {
+  flex-shrink: 0;
+  min-width: 220px;
+  background: #121417;
+  border: 1px solid #2a2e34;
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.face-enroll-idcard-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #e8eaed;
+}
+
+.face-enroll-idcard-row {
+  font-size: 0.72rem;
+  color: #9aa0a6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+
+.face-enroll-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--space-md);
+  align-items: start;
+}
+
+.face-enroll-aside .face-modal {
+  width: 100%;
+}
+
+.face-enroll-note {
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: #9aa0a6;
+  margin: 0;
+}
+
+.face-enroll-link {
+  font-size: 0.75rem;
+  justify-content: center;
+}
+
+@media (max-width: 760px) {
+  .face-enroll-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .face-enroll-header {
+    flex-direction: column;
+  }
+}
+
+/* ── Side-by-side 1:1 comparison (FaceCaptureModal) ──────────────────────── */
+.face-modal--wide {
+  width: min(680px, 94vw);
+}
+
+.face-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+}
+
+.face-panel-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa0a6;
+  margin-bottom: 6px;
+}
+
+.face-reference-panel {
+  background: #0b0d0f;
+  border: 1px solid #2a2e34;
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.face-reference-panel--preview {
+  flex: 1;
+  min-height: 180px;
+}
+
+.face-reference-frame {
+  aspect-ratio: 4 / 3;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #0b0d0f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.face-reference-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.face-reference-caption {
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  color: #156E3F;
+  text-align: center;
+}
+
+.face-reference-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: #565d66;
+}
+
+.face-live-panel {
+  min-width: 0;
+}
+
+@media (max-width: 560px) {
+  .face-compare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Face ID badges (Team roster) & reference photo (AdminApprovals) ─────── */
+.emp-faceid {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-top: 2px;
+}
+
+.emp-faceid--ok {
+  color: #156E3F;
+}
+
+.emp-faceid--none {
+  color: #9A5B13;
+}
+
+.approval-reference-photo {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 2px solid #B35010;
+  flex-shrink: 0;
+}
+
+.face-enroll-grid .face-modal {
+  width: 100%;
+}

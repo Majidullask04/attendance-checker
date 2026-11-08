@@ -59,7 +59,7 @@ export function useAttendanceStore() {
   const [workflowRequests, setWorkflowRequests] = useState([]);
   const [pendingWorkflows, setPendingWorkflows] = useState(0);
   // Layer 2: face verification (enrolled 64-D signature + capture toggle)
-  const [faceEnrollment, setFaceEnrollment] = useState({ enrolled: false, signature: [], enrolledAt: null });
+  const [faceEnrollment, setFaceEnrollment] = useState({ enrolled: false, signature: [], descriptor: [], referencePhoto: null, enrolledAt: null });
   const [faceVerifyEnabled, setFaceVerifyEnabled] = useState(true);
 
   // Online / offline listeners
@@ -166,7 +166,7 @@ export function useAttendanceStore() {
     }
   }, []);
 
-  // Layer 2: load own face enrollment (64-D signature for the 1:1 live match)
+  // Layer 2: load own face enrollment (descriptor + reference photo for the 1:1 live match)
   const loadFaceEnrollment = useCallback(async () => {
     if (!authUser) return;
     try {
@@ -174,6 +174,8 @@ export function useAttendanceStore() {
       setFaceEnrollment({
         enrolled: Boolean(data.enrolled),
         signature: Array.isArray(data.signature) ? data.signature : [],
+        descriptor: Array.isArray(data.descriptor) ? data.descriptor : [],
+        referencePhoto: data.referencePhoto || null,
         enrolledAt: data.enrolledAt || null,
       });
     } catch (err) {
@@ -384,6 +386,7 @@ export function useAttendanceStore() {
               selfieDataUrl: selfie.selfieDataUrl,
               selfieSha256: selfie.selfieSha256,
               faceSignature: selfie.faceSignature,
+              faceDescriptor: selfie.faceDescriptor,
               livenessVerified: selfie.livenessVerified,
             }
             : {}),
@@ -437,7 +440,7 @@ export function useAttendanceStore() {
   );
 
   const checkOutWithQR = useCallback(
-    async (scannedData) => {
+    async (scannedData, selfie = null) => {
       if (!canTransition(attendanceState, 'checking_out')) {
         addToast('Invalid transition state for Check Out.', 'error');
         return { success: false };
@@ -466,6 +469,15 @@ export function useAttendanceStore() {
           deviceTimestamp: new Date().toISOString(),
           workMode,
           siteRef: activeLocation?.id || null,
+          ...(selfie && typeof navigator !== 'undefined' && navigator.onLine
+            ? {
+              selfieDataUrl: selfie.selfieDataUrl,
+              selfieSha256: selfie.selfieSha256,
+              faceSignature: selfie.faceSignature,
+              faceDescriptor: selfie.faceDescriptor,
+              livenessVerified: selfie.livenessVerified,
+            }
+            : {}),
         });
 
         if (res.offline) {
@@ -513,7 +525,7 @@ export function useAttendanceStore() {
   }, [addToast, loadRecords]);
 
   const endBreak = useCallback(
-    async (scannedData) => {
+    async (scannedData, selfie = null) => {
       setIsLoading(true);
       try {
         let payload;
@@ -523,7 +535,18 @@ export function useAttendanceStore() {
           payload = { token: scannedData };
         }
 
-        const res = await api.endBreak({ qrPayload: payload });
+        const res = await api.endBreak({
+          qrPayload: payload,
+          ...(selfie && typeof navigator !== 'undefined' && navigator.onLine
+            ? {
+              selfieDataUrl: selfie.selfieDataUrl,
+              selfieSha256: selfie.selfieSha256,
+              faceSignature: selfie.faceSignature,
+              faceDescriptor: selfie.faceDescriptor,
+              livenessVerified: selfie.livenessVerified,
+            }
+            : {}),
+        });
         setAttendanceState('checked_in');
         setBreakStartTime(null);
         addToast('✓ Break ended via QR Scan! Welcome back to shift.', 'success');
@@ -544,7 +567,7 @@ export function useAttendanceStore() {
 
   // ── Overtime (OT) ─────────────────────────────────────────────────────────
   const startOT = useCallback(
-    async (scannedData) => {
+    async (scannedData, selfie = null) => {
       setIsLoading(true);
       try {
         let payload;
@@ -554,7 +577,18 @@ export function useAttendanceStore() {
           payload = { token: scannedData };
         }
 
-        const res = await api.startOT({ qrPayload: payload });
+        const res = await api.startOT({
+          qrPayload: payload,
+          ...(selfie && typeof navigator !== 'undefined' && navigator.onLine
+            ? {
+              selfieDataUrl: selfie.selfieDataUrl,
+              selfieSha256: selfie.selfieSha256,
+              faceSignature: selfie.faceSignature,
+              faceDescriptor: selfie.faceDescriptor,
+              livenessVerified: selfie.livenessVerified,
+            }
+            : {}),
+        });
         setAttendanceState('ot_active');
         addToast('⏫ Overtime started! Extra work timer is running.', 'success');
         await loadRecords();
@@ -573,7 +607,7 @@ export function useAttendanceStore() {
   );
 
   const endOT = useCallback(
-    async (scannedData) => {
+    async (scannedData, selfie = null) => {
       setIsLoading(true);
       try {
         let payload;
@@ -583,7 +617,18 @@ export function useAttendanceStore() {
           payload = { token: scannedData };
         }
 
-        const res = await api.endOT({ qrPayload: payload });
+        const res = await api.endOT({
+          qrPayload: payload,
+          ...(selfie && typeof navigator !== 'undefined' && navigator.onLine
+            ? {
+              selfieDataUrl: selfie.selfieDataUrl,
+              selfieSha256: selfie.selfieSha256,
+              faceSignature: selfie.faceSignature,
+              faceDescriptor: selfie.faceDescriptor,
+              livenessVerified: selfie.livenessVerified,
+            }
+            : {}),
+        });
         setAttendanceState('checked_in');
         addToast('⏹ Overtime ended. Great work!', 'info');
         await loadRecords();

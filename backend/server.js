@@ -53,10 +53,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', "'wasm-unsafe-eval'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'", "https://attendance-checker-p9qd.onrender.com", ...allowedOrigins],
+      connectSrc: ["'self'", 'https://cdn.jsdelivr.net', "https://attendance-checker-p9qd.onrender.com", ...allowedOrigins],
+      workerSrc: ["'self'", 'blob:'],
     },
   },
 }));

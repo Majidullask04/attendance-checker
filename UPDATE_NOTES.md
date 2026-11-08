@@ -2,6 +2,15 @@
 
 Implements the full 6-layer Zoho People pipeline — capture → validation → database → workflows → approvals → payroll:
 
+## Biometric 1:1 Face ID (v1.3.0 addition)
+- **Neural 128-D engine (`src/utils/faceRecognitionEngine.js`)**: TinyFaceDetector + 68-landmark + ResNet-34 recognition nets (`@vladmandic/face-api`) loaded from jsDelivr CDN at runtime, with automatic fallback to the zero-dependency 64-D geometric engine (works offline / WebView).
+- **Mandatory enrollment stage**: approved employees with no Face ID are routed to the new `FaceEnrollmentScreen` (auth lifecycle Stage 3) to capture their reference ID photo + 128-D descriptor → `POST /api/auth/enroll-face`.
+- **Server-side endpoints (`backend/routes/auth.js`)**: `POST /enroll-face`, `POST /verify-face` (strict `d <= 0.45` euclidean 1:1 + liveness; mismatch → `403 FACE_MISMATCH`), `POST /reset-face/:userId` (admin re-enroll control).
+- **Punch-time gating (`backend/routes/attendance.js`)**: every check-in / check-out / break / OT punch is verified 1:1 against the employee's OWN enrolled descriptor server-side; mismatches are rejected `403` and written to `audit_logs` (`FACE_MISMATCH_BLOCKED`). Legacy 64-D punches keep soft "flagged" behavior.
+- **Side-by-side verification modal**: `FaceCaptureModal` now shows the employee's enrolled reference photo next to the live camera with leave-lightness and live `1:1 MATCH %` telemetry (JetBrains Mono).
+- **Admin controls**: Team roster shows `FACE ID ENROLLED / PENDING` badges + per-member **Reset Face ID**; approval cards display the employee's reference photo for visual confirmation.
+- **Schema migrations (idempotent)**: `users` gains `reference_photo`, `face_descriptor` (128-D), `face_enrolled` (+ one-time promotion of legacy `face_signature` enrollments); `attendance_records` gains `face_verified`. CSP updated to allow the model CDN + WASM.
+
 ## Layer 2 — Multi-Modal Capture
 - Every punch now records `capture_method` (`QR_KIOSK_SIGNED`, `GPS_MOBILE_GEOFENCE`, `BIOMETRIC_TERMINAL`, `REGULARIZED_BY_ADMIN`), `ip_address` (x-forwarded-for aware), `gps_accuracy`, `distance_meters`, `geofence_status`, `arrival_status`, `device_info` (WEB_DESKTOP / ANDROID_CAPACITOR / MOBILE_WEB / KIOSK), `work_mode` + `site_code`.
 - New work-mode selector on the Check-In screen (HQ Workshop / EPC Project Site / On-Duty Visit), tagged to each scan.

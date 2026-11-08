@@ -34,6 +34,7 @@ export default function Team({ store }) {
   const [selected, setSelected] = useState(null);
   const [userRecords, setUserRecords] = useState([]);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
+  const [isResettingFace, setIsResettingFace] = useState(null);
   const [viewMode, setViewMode] = useState('table'); // table | cards | muster
   const [musterMonth, setMusterMonth] = useState(() => (selectedDate || '').slice(0, 7));
   const [musterData, setMusterData] = useState(null);
@@ -66,6 +67,25 @@ export default function Team({ store }) {
       addToast('Payroll muster CSV downloaded successfully.', 'success');
     } catch (err) {
       addToast(err.message || 'Payroll CSV export failed', 'error');
+    }
+  };
+
+  // Biometric admin control: clear an employee's Face ID enrollment so they
+  // can re-enroll a new reference photo.
+  const handleResetFaceId = async (emp) => {
+    if (!emp?.id) return;
+    if (!window.confirm(`Reset Face ID enrollment for ${getEmployeeName(emp)}? They must re-enroll before next check-in.`)) {
+      return;
+    }
+    setIsResettingFace(emp.id);
+    try {
+      const res = await api.resetFace(emp.id);
+      addToast(res.message || 'Face ID cleared. The employee can now re-enroll.', 'success');
+      await loadTeamData(selectedDate);
+    } catch (err) {
+      addToast(err.message || 'Failed to reset Face ID enrollment', 'error');
+    } finally {
+      setIsResettingFace(null);
     }
   };
 
@@ -364,6 +384,9 @@ export default function Team({ store }) {
                           <div>
                             <div className="emp-name">{getEmployeeName(emp)}</div>
                             <div className="emp-email font-mono">{emp.email}</div>
+                            <div className={`emp-faceid font-mono ${emp.faceEnrolled ? 'emp-faceid--ok' : 'emp-faceid--none'}`}>
+                              {emp.faceEnrolled ? 'FACE ID ENROLLED' : 'FACE ID PENDING'}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -428,6 +451,18 @@ export default function Team({ store }) {
                             }}
                           >
                             {selected === emp.id ? 'Close' : 'Inspect'}
+                          </button>
+                          <button
+                            className="btn-tiny"
+                            style={{ backgroundColor: 'var(--color-info)', color: 'var(--color-surface)', border: 'none', padding: 'var(--space-sm)' }}
+                            title={emp.faceEnrolled ? 'Clear the employee Face ID enrollment so they can re-enroll' : 'Employee has no Face ID enrolled yet'}
+                            disabled={!emp.faceEnrolled || isResettingFace}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResetFaceId(emp);
+                            }}
+                          >
+                            {isResettingFace === emp.id ? 'Resetting…' : 'Reset Face ID'}
                           </button>
                           <button
                             className="btn-tiny"

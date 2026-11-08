@@ -2,24 +2,35 @@
 // Layer 2: Face Detection, Liveness & 1:1 Verification capture — Hallmark Vantage
 // dark readout chassis (#121417), copper corner brackets (#B35010), breaker-blue
 // face-lock telemetry (#0E639C), JetBrains Mono readout. Zero emojis, zero glow.
+// Renders a side-by-side ENROLLED REFERENCE PHOTO vs LIVE CAMERA VERIFICATION
+// comparison and blocks the punch until liveness + 1:1 match pass
+// (128-D euclidean <= 0.45 via @vladmandic/face-api, legacy 64-D cosine fallback).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   analyzeImageQuality,
-  detectSingleFace,
   computeLivenessFrameDelta,
-  extractFaceSignature,
-  compareFaceSignatures,
   computeSelfieSHA256,
   FACE_CAPTURE_WIDTH,
   FACE_CAPTURE_HEIGHT,
-  FACE_MATCH_MIN_THRESHOLD,
 } from '../utils/faceDetectionEngine.js';
-import { X, ScanFace, ShieldCheck, CameraOff } from 'lucide-react';
+import {
+  initFaceModels,
+  detectAndExtractDescriptor,
+  matchDescriptors,
+  getEngineStatus,
+} from '../utils/faceRecognitionEngine.js';
+import { ScanFace, ShieldCheck, CameraOff, RefreshCw } from 'lucide-react';
 
 const LOOP_INTERVAL_MS = 400;
-const LIVELINESS_STREAK_REQUIRED = 2; // consecutive passing micro-motion deltas
+const LIVENESS_STREAK_REQUIRED = 2; // consecutive passing micro-motion deltas
 
-export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature = null }) {
+export default function FaceCaptureModal({
+  onCapture,
+  onClose,
+  enrolledSignature = null,
+  descriptor = null,
+  referencePhoto = null,
+}) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -27,9 +38,11 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
   const prevFrameRef = useRef(null);
   const livenessStreakRef = useRef(0);
   const faceRef = useRef(null);
+  const busyRef = useRef(false);
 
   const [cameraError, setCameraError] = useState(null);
   const [capturing, setCapturing] = useState(false);
+  const [engineStatus, setEngineStatus] = useState(() => getEngineStatus());
   const [telemetry, setTelemetry] = useState({
     brightness: 0,
     sharpness: 0,
@@ -42,7 +55,22 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
     ready: false,
   });
 
-  const enrollFirstTime = !enrolledSignature || enrolledSignature.length === 0;
+  // Enrolled identity source of truth: prefer the 128-D descriptor,
+  // fall back to the legacy 64-D signature.
+  const enrolledDescriptor = descriptor?.length ? descriptor : enrolledSignature;
+  const descriptorLength = enrolledDescriptor?.length || 0;
+  const enrollFirstTime = descriptorLength === 0;
+
+  // Load neural engine models once (never throws)
+  useEffect(() => {
+    let mounted = true;
+    initFaceModels().then((state) => {
+      if (mounted) setEngineStatus({ ...state, error: getEngineStatus().error });
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Stop camera + timers
   const teardown = useCallback(() => {
@@ -89,6 +117,7 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
 
       // Analyze loop
       loopRef.current = setInterval(async () => {
+        if (busyRef.current) return; // guard against overlapping neural inference
         const video = videoRef.current;
         const canvas = canvasRef.current;
         if (!video || !canvas || video.readyState < 2) return;
@@ -111,40 +140,37 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
           ? Math.min(livenessStreakRef.current + 1, 6)
           : 0;
 
-        // Stage 2: single-face detection
-        let face = { detected: false, faceCount: null, reason: quality.passed ? 'SCANNING' : quality.reason };
-        let box = null;
+        // Stage 2+4: single-face detection + descriptor (neural 128-D or geometric 64-D)
+        let face = { detected: false, faceCount: null, reason: quality.passed ? 'SCANNING' : quality.reason, method: null };
         if (quality.passed) {
+          busyRef.current = true;
           try {
-            face = await detectSingleFace(canvas, ctx, FACE_CAPTURE_WIDTH, FACE_CAPTURE_HEIGHT);
-            box = face.box || null;
+            face = await detectAndExtractDescriptor(canvas, ctx);
           } catch {
             face = { detected: false, faceCount: null, reason: 'Detection error — retry' };
+          } finally {
+            busyRef.current = false;
           }
         }
 
-        // Stage 4: 64-D descriptor + 1:1 cosine match
+        // 1:1 match against this employee's enrolled descriptor
         let matchPct = null;
-        if (face.detected) {
-          const liveSig = extractFaceSignature(ctx, box, FACE_CAPTURE_WIDTH, FACE_CAPTURE_HEIGHT);
-          if (liveSig) {
-            const similarity = enrollFirstTime
-              ? 1.0
-              : compareFaceSignatures(liveSig, enrolledSignature);
-            if (similarity != null) {
-              matchPct = similarity;
-              face.latestSignature = liveSig;
-            }
+        if (face.detected && face.descriptor) {
+          const match = enrollFirstTime ? null : matchDescriptors(enrolledDescriptor, face.descriptor);
+          if (match) {
+            matchPct = match.matchPct;
+            face.matchPass = match.pass;
           }
+          face.latestSignature = face.descriptor;
         }
 
         faceRef.current = face;
-        const livenessPass = quality.passed && livenessStreakRef.current >= LIVELINESS_STREAK_REQUIRED;
+        const livenessPass = quality.passed && livenessStreakRef.current >= LIVENESS_STREAK_REQUIRED;
         const ready =
           quality.passed &&
           face.detected &&
           livenessPass &&
-          (enrollFirstTime || (matchPct != null && matchPct >= FACE_MATCH_MIN_THRESHOLD));
+          (enrollFirstTime || (matchPct != null && face.matchPass));
 
         setTelemetry({
           brightness: quality.meanBrightness,
@@ -154,7 +180,7 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
           livenessPct: liveness.motionPct,
           livenessPass,
           livenessReason: livenessPass ? 'LIVE_VERIFIED' : liveness.reason,
-          matchPct: matchPct == null ? null : Math.round(matchPct * 1000) / 10,
+          matchPct: matchPct == null ? null : Math.round(matchPct * 10) / 10,
           ready,
         });
       }, LOOP_INTERVAL_MS);
@@ -165,7 +191,7 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
       cancelled = true;
       teardown();
     };
-  }, [teardown, enrollFirstTime, enrolledSignature]);
+  }, [teardown, enrollFirstTime, enrolledDescriptor]);
 
   // Stage 5: capture WebP + SHA-256 digest and hand off
   const handleCapture = useCallback(async () => {
@@ -185,7 +211,8 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
       onCapture({
         selfieDataUrl: dataUrl,
         selfieSha256,
-        faceSignature: face?.latestSignature || null,
+        faceSignature: face?.descriptor?.length === 64 ? Array.from(face.descriptor) : null,
+        faceDescriptor: face?.descriptor?.length === 128 ? Array.from(face.descriptor) : null,
         livenessVerified: true,
       });
     } catch (err) {
@@ -195,50 +222,74 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
   }, [capturing, onCapture, teardown]);
 
   const t = telemetry;
+  const showSideBySide = Boolean(referencePhoto);
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Face verification">
-      <div className="face-modal fade-in">
+      <div className={`face-modal fade-in ${showSideBySide ? 'face-modal--wide' : ''}`}>
         <div className="face-modal-header">
           <div className="face-modal-title">
             <ScanFace size={16} />
-            <span>Face Verification — Liveness & 1:1 Match</span>
+            <span>
+              1:1 Identity Verification —{' '}
+              {engineStatus.status === 'ready' ? 'NEURAL 128-D ENGINE' : 'GEOMETRIC FALLBACK ENGINE'}
+            </span>
           </div>
-          <button className="face-modal-close" onClick={onClose} aria-label="Close face verification">
-            <X size={16} />
+          <button
+            className="face-modal-close"
+            onClick={() => initFaceModels().then((state) => setEngineStatus({ ...state, error: getEngineStatus().error }))}
+            aria-label="Reload face recognition engine"
+            title="Reload face recognition engine"
+          >
+            <RefreshCw size={16} />
           </button>
         </div>
 
-        <div className="face-viewfinder">
-          {/* Copper corner brackets */}
-          <span className="face-bracket face-bracket--tl" />
-          <span className="face-bracket face-bracket--tr" />
-          <span className="face-bracket face-bracket--bl" />
-          <span className="face-bracket face-bracket--br" />
-          {/* Breaker-blue face-lock indicator */}
-          <span className={`face-lock-indicator ${t.faceLock ? 'face-lock-indicator--locked' : ''}`} />
-
-          <video
-            ref={videoRef}
-            className="face-video"
-            playsInline
-            muted
-            autoPlay
-          />
-          <canvas
-            ref={canvasRef}
-            width={FACE_CAPTURE_WIDTH}
-            height={FACE_CAPTURE_HEIGHT}
-            className="face-canvas"
-            aria-hidden="true"
-          />
-
-          {cameraError && (
-            <div className="face-camera-error">
-              <CameraOff size={18} />
-              <span>{cameraError}</span>
+        <div className={showSideBySide ? 'face-compare-grid' : ''}>
+          {showSideBySide && (
+            <div className="face-reference-panel">
+              <div className="face-panel-label font-mono">ENROLLED REFERENCE PHOTO</div>
+              <div className="face-reference-frame">
+                <img src={referencePhoto} alt="Enrolled reference face photo" />
+              </div>
+              <div className="face-reference-caption font-mono">BOUND TO YOUR ACCOUNT</div>
             </div>
           )}
+
+          <div className={showSideBySide ? 'face-live-panel' : ''}>
+            {showSideBySide && <div className="face-panel-label font-mono">LIVE CAMERA VERIFICATION</div>}
+            <div className="face-viewfinder">
+              {/* Copper corner brackets */}
+              <span className="face-bracket face-bracket--tl" />
+              <span className="face-bracket face-bracket--tr" />
+              <span className="face-bracket face-bracket--bl" />
+              <span className="face-bracket face-bracket--br" />
+              {/* Breaker-blue face-lock indicator */}
+              <span className={`face-lock-indicator ${t.faceLock ? 'face-lock-indicator--locked' : ''}`} />
+
+              <video
+                ref={videoRef}
+                className="face-video"
+                playsInline
+                muted
+                autoPlay
+              />
+              <canvas
+                ref={canvasRef}
+                width={FACE_CAPTURE_WIDTH}
+                height={FACE_CAPTURE_HEIGHT}
+                className="face-canvas"
+                aria-hidden="true"
+              />
+
+              {cameraError && (
+                <div className="face-camera-error">
+                  <CameraOff size={18} />
+                  <span>{cameraError}</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* JetBrains Mono live telemetry readout */}
@@ -252,22 +303,36 @@ export default function FaceCaptureModal({ onCapture, onClose, enrolledSignature
           <div className="face-telemetry-row">
             <span className="face-telemetry-label">FACE LOCK</span>
             <span className={`face-telemetry-value ${t.faceLock ? 'text-success' : 'text-warning'}`}>
-              {t.faceLock ? 'LOCKED · 1 FACE' : t.faceLockReason.toUpperCase()}
+              {t.faceLock ? (t.faceLockReason !== 'FACE LOCKED' ? t.faceLockReason : 'LOCKED · 1 FACE') : t.faceLockReason.toUpperCase()}
             </span>
           </div>
           <div className="face-telemetry-row">
             <span className="face-telemetry-label">LIVENESS</span>
             <span className={`face-telemetry-value ${t.livenessPass ? 'text-success' : 'text-warning'}`}>
-              {t.livenessPass ? 'LIVE_VERIFIED' : `${t.livenessPct.toFixed(1)}% MOTION`}
+              {t.livenessPass ? 'LIVE MOTION VERIFIED' : `${t.livenessPct.toFixed(1)}% MOTION`}
             </span>
           </div>
           <div className="face-telemetry-row">
-            <span className="face-telemetry-label">MATCH %</span>
-            <span className={`face-telemetry-value ${enrollFirstTime ? 'text-info' : t.ready ? 'text-success' : 'text-warning'}`}>
-              {enrollFirstTime ? 'ENROLLMENT CAPTURE' : t.matchPct == null ? 'AWAITING FACE' : `${t.matchPct.toFixed(1)}%`}
+            <span className="face-telemetry-label">1:1 MATCH %</span>
+            <span className={`face-telemetry-value ${enrollFirstTime ? 'text-info' : t.ready ? 'text-success' : t.matchPct != null ? 'text-danger' : 'text-warning'}`}>
+              {enrollFirstTime
+                ? 'ENROLLMENT CAPTURE'
+                : t.matchPct == null
+                  ? 'AWAITING FACE'
+                  : `${t.matchPct.toFixed(1)}%`}
             </span>
           </div>
         </div>
+
+        {enrollFirstTime && !showSideBySide && (
+          <button
+            className="btn-secondary face-enroll-link"
+            onClick={onClose}
+            title="Enroll Face ID before verifying"
+          >
+            No enrollment found — complete Face ID enrollment first
+          </button>
+        )}
 
         <div className="face-modal-actions">
           <button className="btn-secondary" onClick={onClose}>Cancel</button>

@@ -117,11 +117,13 @@ const initDb = async () => {
       await addColumn('selfie_sha256', `selfie_sha256 TEXT`);
       await addColumn('face_match_score', `face_match_score REAL`);
       await addColumn('liveness_verified', `liveness_verified INTEGER DEFAULT 0`);
+      await addColumn('face_verified', `face_verified INTEGER DEFAULT 0`);
     } catch (colErr) {
       console.log('Work mode column check:', colErr.message);
     }
 
     // Layer 2: per-user enrolled face signature (64-D descriptor, JSON array)
+    // Biometric upgrade: 128-D descriptor + reference photo enrollment gate
     try {
       const userCols = await db.allAsync(
         `SELECT column_name FROM information_schema.columns WHERE table_name = 'users'`
@@ -132,6 +134,26 @@ const initDb = async () => {
       }
       if (!haveUser.has('face_enrolled_at')) {
         await db.runAsync(`ALTER TABLE users ADD COLUMN face_enrolled_at TIMESTAMP`);
+      }
+      if (!haveUser.has('reference_photo')) {
+        await db.runAsync(`ALTER TABLE users ADD COLUMN reference_photo TEXT`);
+      }
+      if (!haveUser.has('face_descriptor')) {
+        await db.runAsync(`ALTER TABLE users ADD COLUMN face_descriptor TEXT`);
+      }
+      if (!haveUser.has('face_enrolled')) {
+        await db.runAsync(`ALTER TABLE users ADD COLUMN face_enrolled INTEGER DEFAULT 0`);
+      }
+
+      // One-time migration: promote existing 64-D enrollments into the new
+      // face_descriptor column so legacy enrollments keep verifying (1:1).
+      const migrated = await db.runAsync(
+        `UPDATE users SET face_descriptor = face_signature, face_enrolled = 1,
+           face_enrolled_at = COALESCE(face_enrolled_at, CURRENT_TIMESTAMP)
+         WHERE face_descriptor IS NULL AND face_signature IS NOT NULL`
+      );
+      if (migrated.changes > 0) {
+        console.log(`Migrated ${migrated.changes} legacy face_signature enrollment(s) to face_descriptor`);
       }
     } catch (userColErr) {
       console.log('User face signature column check:', userColErr.message);

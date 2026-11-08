@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client.js';
 import {
   signInWithGoogle,
@@ -286,6 +286,31 @@ export function AuthProvider({ children }) {
     setPendingApproval(false);
   };
 
+  // Re-fetches the signed-in user's profile (used after Face ID enrollment
+  // so the auth lifecycle can advance to the authenticated stage without
+  // requiring a manual re-login).
+  const refreshUser = useCallback(async () => {
+    try {
+      const data = await api.me();
+      const fresh = data?.user;
+      if (!fresh) return null;
+      const isAdminUser = checkIsAdminEmail(fresh.email) || fresh.role === 'admin';
+      setUser((prev) => ({
+        ...(prev || {}),
+        ...fresh,
+        name: cleanUserName(fresh.name, fresh.email),
+        role: isAdminUser ? 'admin' : 'user',
+        isAdminVerified: isAdminUser,
+        faceEnrolled: fresh.faceEnrolled ?? prev?.faceEnrolled ?? false,
+      }));
+      setPendingApproval(false);
+      return fresh;
+    } catch (err) {
+      console.warn('User refresh failed:', err?.message || err);
+      return null;
+    }
+  }, []);
+
   const isAdmin = AUTH_BYPASS || Boolean(user && user.isAdminVerified && user.role === 'admin');
 
   return (
@@ -295,6 +320,7 @@ export function AuthProvider({ children }) {
         login,
         loginWithGoogle,
         logout,
+        refreshUser,
         isLoading: AUTH_BYPASS ? false : isLoading,
         pendingApproval: AUTH_BYPASS ? false : pendingApproval,
         isAdmin,

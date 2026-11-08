@@ -13,6 +13,13 @@ import {
   compareFaceSignatures,
   FACE_MATCH_MIN_THRESHOLD,
 } from '../utils/validationEngine.js';
+import { writeAudit } from '../utils/audit.js';
+import {
+  FACE_DESCRIPTOR_LENGTH,
+  LEGACY_FACE_SIGNATURE_LENGTH,
+  parseStoredDescriptor,
+  verifyFaceDescriptor,
+} from '../utils/faceVerifyServer.js';
 
 const router = Router();
 
@@ -22,6 +29,77 @@ function sanitizeRecord(record) {
     ...record,
     userName: cleanUserName(record.userName, record.userEmail),
   };
+}
+
+// ── Layer 2: valid numeric-face-vector helpers ─────────────────────────────
+function isValidFaceVector(vec, length) {
+  return Array.isArray(vec) && vec.length === length &&
+    vec.every((v) => typeof v === 'number' && Number.isFinite(v));
+}
+
+/**
+ * Loads an employee's stored 1:1 descriptor (128-D preferred, legacy 64-D
+ * fallback) from the users table.
+ */
+async function loadStoredFaceDescriptor(userId) {
+  const userRow = await db.getAsync(`SELECT face_descriptor, face_signature FROM users WHERE id = $1`, [userId]);
+  return parseStoredDescriptor(userRow?.face_descriptor) || parseStoredDescriptor(userRow?.face_signature);
+}
+
+// Layer 2: strict 1:1 face verification for check-out / break / OT punches.
+// When the client supplies a live descriptor it is verified against the
+// employee's enrolled descriptor and rejected with 403 on mismatch; when no
+// descriptor is supplied (offline sync, legacy clients) the punch proceeds.
+async function evaluatePunchFace(userId, userEmail, { faceDescriptor, faceSignature } = {}) {
+  let faceMatch = null;
+  let faceVerified = 0;
+  let faceMethod = null;
+
+  if (isValidFaceVector(faceDescriptor, FACE_DESCRIPTOR_LENGTH)) {
+    const storedDescriptor = await loadStoredFaceDescriptor(userId);
+    if (Array.isArray(storedDescriptor) && storedDescriptor.length === FACE_DESCRIPTOR_LENGTH) {
+      const result = verifyFaceDescriptor(storedDescriptor, faceDescriptor);
+      faceMethod = result.method;
+      if (result.incomplete) {
+        // Unusable vector pair — punch recorded without a face verdict
+      } else if (result.valid) {
+        faceMatch = result.matchScore;
+        faceVerified = 1;
+      } else {
+        await writeAudit({
+          actorEmail: userEmail,
+          action: 'FACE_MISMATCH_BLOCKED',
+          entityType: 'USER',
+          entityId: userId,
+          details: `${result.method} 1:1 match failed on punch (${result.matchPct}% vs required 80%, d=${result.distance})`,
+        });
+        return {
+          blocked: {
+            error: 'IDENTITY MISMATCH — Face does not match the enrolled reference photo for this employee.',
+            code: 'FACE_MISMATCH',
+            matchPct: result.matchPct,
+          },
+          faceMatch,
+          faceVerified,
+          faceMethod,
+        };
+      }
+    }
+  } else if (isValidFaceVector(faceSignature, LEGACY_FACE_SIGNATURE_LENGTH)) {
+    const storedDescriptor = await loadStoredFaceDescriptor(userId);
+    if (Array.isArray(storedDescriptor) && storedDescriptor.length === LEGACY_FACE_SIGNATURE_LENGTH) {
+      const legacyMatch = compareFaceSignatures(faceSignature, storedDescriptor);
+      if (legacyMatch != null) {
+        faceMatch = legacyMatch;
+        faceMethod = 'COSINE_64D';
+        if (legacyMatch >= FACE_MATCH_MIN_THRESHOLD) {
+          faceVerified = 1;
+        }
+      }
+    }
+  }
+
+  return { blocked: null, faceMatch, faceVerified, faceMethod };
 }
 
 // Layer 2: extract client IP (proxy-aware) for WEB_IP capture
@@ -150,7 +228,7 @@ router.get('/policy', (req, res) => {
 
 // POST /api/attendance/check-in
 router.post('/check-in', async (req, res) => {
-  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef, selfieDataUrl, selfieSha256, faceSignature, livenessVerified } = req.body;
+  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef, selfieDataUrl, selfieSha256, faceSignature, faceDescriptor, livenessVerified } = req.body;
   const userId = req.user.id;
 
   const parsed = parseQRPayload(req.body);
@@ -225,23 +303,59 @@ router.post('/check-in', async (req, res) => {
     const isInZone = geo.status !== 'OUTSIDE_GEOFENCE';
     let status = !isInZone ? 'flagged' : (scanEvaluation === 'late' ? 'late' : 'verified');
 
-    // Layer 2 face pipeline: server-side 1:1 verification + first-time enrollment
+    // Layer 2 face pipeline: server-side 1:1 verification against the
+    // employee's OWN enrolled descriptor. A 128-D mismatch is a hard 403
+    // (punch rejected, security event audited) — no other person may punch
+    // under this account. Legacy 64-D signature punches keep the soft
+    // "flagged for admin review" behavior for backward compatibility.
     let faceMatch = null;
     let enrolledNow = false;
-    if (Array.isArray(faceSignature) && faceSignature.length === 64 &&
-        faceSignature.every((v) => typeof v === 'number')) {
-      const userRow = await db.getAsync(`SELECT face_signature FROM users WHERE id = $1`, [userId]);
-      let storedSignature = null;
-      try {
-        storedSignature = userRow?.face_signature ? JSON.parse(userRow.face_signature) : null;
-      } catch {
-        storedSignature = null;
-      }
-      if (Array.isArray(storedSignature) && storedSignature.length === faceSignature.length) {
-        faceMatch = compareFaceSignatures(faceSignature, storedSignature);
-        if (faceMatch < FACE_MATCH_MIN_THRESHOLD) {
-          // Possible spoof or different person — record but flag for admin review
+    let faceVerified = 0;
+    let faceMethod = null;
+    const hasStrictDescriptor = isValidFaceVector(faceDescriptor, FACE_DESCRIPTOR_LENGTH);
+
+    if (hasStrictDescriptor) {
+      const storedDescriptor = await loadStoredFaceDescriptor(userId);
+      if (Array.isArray(storedDescriptor) && storedDescriptor.length === FACE_DESCRIPTOR_LENGTH) {
+        const result = verifyFaceDescriptor(storedDescriptor, faceDescriptor);
+        faceMethod = result.method;
+        if (result.incomplete) {
+          // Unusable vector pair — punch recorded but flagged for admin review
           status = 'flagged';
+        } else if (result.valid) {
+          faceMatch = result.matchScore;
+          faceVerified = 1;
+        } else {
+          await writeAudit({
+            actorEmail: req.user.email,
+            action: 'FACE_MISMATCH_BLOCKED',
+            entityType: 'USER',
+            entityId: userId,
+            details: `Check-in blocked — 1:1 match failed (${result.method}, ${result.matchPct}% vs required 80%, d=${result.distance})`,
+          });
+          return res.status(403).json({
+            error: 'IDENTITY MISMATCH — Face does not match the enrolled reference photo for this employee.',
+            code: 'FACE_MISMATCH',
+            matchPct: result.matchPct,
+          });
+        }
+      }
+      // No strict enrollment yet: full enrollment (with reference photo) is
+      // enforced at the FaceEnrollmentScreen gate — nothing to enroll here.
+    } else if (isValidFaceVector(faceSignature, LEGACY_FACE_SIGNATURE_LENGTH)) {
+      // Legacy 64-D geometric signature path (offline sync / older clients)
+      const storedSignature = await loadStoredFaceDescriptor(userId);
+      if (Array.isArray(storedSignature) && storedSignature.length === LEGACY_FACE_SIGNATURE_LENGTH) {
+        const legacyMatch = compareFaceSignatures(faceSignature, storedSignature);
+        if (legacyMatch != null) {
+          faceMatch = legacyMatch;
+          faceMethod = 'COSINE_64D';
+          if (legacyMatch < FACE_MATCH_MIN_THRESHOLD) {
+            // Possible spoof or different person — record but flag for admin review
+            status = 'flagged';
+          } else {
+            faceVerified = 1;
+          }
         }
       } else {
         // First-time enrollment: bind this verified capture to the employee
@@ -250,14 +364,15 @@ router.post('/check-in', async (req, res) => {
           [JSON.stringify(faceSignature), new Date().toISOString(), userId]
         );
         faceMatch = 1.0;
+        faceVerified = 1;
         enrolledNow = true;
       }
     }
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref, site_code, capture_method, ip_address, gps_accuracy, distance_meters, geofence_status, arrival_status, device_info, selfie_data, selfie_sha256, face_match_score, liveness_verified)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref, site_code, capture_method, ip_address, gps_accuracy, distance_meters, geofence_status, arrival_status, device_info, selfie_data, selfie_sha256, face_match_score, liveness_verified, face_verified)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
       [
         recordId,
         userId,
@@ -288,6 +403,7 @@ router.post('/check-in', async (req, res) => {
         selfieSha256 || null,
         faceMatch,
         selfieSha256 ? (livenessVerified === false ? 0 : 1) : 0,
+        faceVerified,
       ]
     );
 
@@ -329,6 +445,9 @@ router.post('/check-in', async (req, res) => {
         selfieVerified: Boolean(selfieSha256),
         livenessVerified: selfieSha256 ? livenessVerified !== false : false,
         matchScore: faceMatch,
+        matchPct: faceMatch != null ? Math.round(faceMatch * 100) : null,
+        verified: faceVerified === 1,
+        method: faceMethod,
         enrolledNow,
         selfieSha256: selfieSha256 || null,
       },
@@ -343,7 +462,7 @@ router.post('/check-in', async (req, res) => {
 
 // POST /api/attendance/check-out
 router.post('/check-out', async (req, res) => {
-  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef } = req.body;
+  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef, selfieDataUrl, selfieSha256, faceSignature, faceDescriptor, livenessVerified } = req.body;
   const userId = req.user.id;
 
   const parsed = parseQRPayload(req.body);
@@ -406,6 +525,13 @@ router.post('/check-out', async (req, res) => {
 
     const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : 'hq';
     const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
+
+    // Layer 2: strict 1:1 face verification (403 on identity mismatch)
+    const faceCheck = await evaluatePunchFace(userId, req.user.email, { faceDescriptor, faceSignature });
+    if (faceCheck.blocked) {
+      return res.status(403).json(faceCheck.blocked);
+    }
+
     const geo = await evaluateGeofence({ latitude, longitude, siteCode: cleanSiteRef, workMode: cleanWorkMode });
     const deviceInfo = resolveDeviceInfo(req, deviceId);
     const ipAddress = getClientIp(req);
@@ -417,8 +543,8 @@ router.post('/check-out', async (req, res) => {
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref, site_code, capture_method, ip_address, gps_accuracy, distance_meters, geofence_status, arrival_status, device_info)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref, site_code, capture_method, ip_address, gps_accuracy, distance_meters, geofence_status, arrival_status, device_info, selfie_data, selfie_sha256, face_match_score, liveness_verified, face_verified)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)`,
       [
         recordId,
         userId,
@@ -445,6 +571,11 @@ router.post('/check-out', async (req, res) => {
         geo.status,
         null,
         deviceInfo,
+        selfieDataUrl || null,
+        selfieSha256 || null,
+        faceCheck.faceMatch,
+        selfieSha256 ? (livenessVerified === false ? 0 : 1) : 0,
+        faceCheck.faceVerified,
       ]
     );
 
@@ -477,7 +608,7 @@ router.post('/check-out', async (req, res) => {
 
 // POST /api/attendance/break - Start or End Break
 router.post('/break', async (req, res) => {
-  const { action, latitude, longitude, accuracyMeters, deviceId } = req.body;
+  const { action, latitude, longitude, accuracyMeters, deviceId, selfieDataUrl, selfieSha256, faceSignature, faceDescriptor, livenessVerified } = req.body;
   const userId = req.user.id;
 
   if (!['start', 'end'].includes(action)) {
@@ -487,6 +618,12 @@ router.post('/break', async (req, res) => {
   try {
     const todayRecords = await getDayUserRecords(userId);
     const nextType = action === 'start' ? 'break_start' : 'break_end';
+
+    // Layer 2: strict 1:1 face verification (403 on identity mismatch)
+    const faceCheck = await evaluatePunchFace(userId, req.user.email, { faceDescriptor, faceSignature });
+    if (faceCheck.blocked) {
+      return res.status(403).json(faceCheck.blocked);
+    }
 
     // Layer 3: duplicate-cooldown + strict sequence gates
     const sequenceCheck = validatePunchSequence(todayRecords, nextType, Date.now());
@@ -501,8 +638,8 @@ router.post('/break', async (req, res) => {
     if (action === 'start') {
       await db.runAsync(
         `INSERT INTO attendance_records 
-         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, gps_accuracy, distance_meters, geofence_status, arrival_status, capture_method, device_info, ip_address)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, gps_accuracy, distance_meters, geofence_status, arrival_status, capture_method, device_info, ip_address, selfie_data, selfie_sha256, face_match_score, liveness_verified, face_verified)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
         [
           recordId,
           userId,
@@ -525,6 +662,11 @@ router.post('/break', async (req, res) => {
           'GPS_MOBILE_GEOFENCE',
           resolveDeviceInfo(req, deviceId),
           getClientIp(req),
+          selfieDataUrl || null,
+          selfieSha256 || null,
+          faceCheck.faceMatch,
+          selfieSha256 ? (livenessVerified === false ? 0 : 1) : 0,
+          faceCheck.faceVerified,
         ]
       );
 
@@ -556,8 +698,8 @@ router.post('/break', async (req, res) => {
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, gps_accuracy, distance_meters, geofence_status, capture_method, device_info, ip_address)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, gps_accuracy, distance_meters, geofence_status, capture_method, device_info, ip_address, selfie_data, selfie_sha256, face_match_score, liveness_verified, face_verified)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
       [
         recordId,
         userId,
@@ -580,6 +722,11 @@ router.post('/break', async (req, res) => {
         'QR_KIOSK_SIGNED',
         resolveDeviceInfo(req, deviceId),
         getClientIp(req),
+        selfieDataUrl || null,
+        selfieSha256 || null,
+        faceCheck.faceMatch,
+        selfieSha256 ? (livenessVerified === false ? 0 : 1) : 0,
+        faceCheck.faceVerified,
       ]
     );
 
@@ -605,7 +752,7 @@ router.post('/break', async (req, res) => {
 
 // POST /api/attendance/ot - Overtime Start or End (After 17:00 IST)
 router.post('/ot', async (req, res) => {
-  const { action, latitude, longitude, accuracyMeters, deviceId } = req.body;
+  const { action, latitude, longitude, accuracyMeters, deviceId, selfieDataUrl, selfieSha256, faceSignature, faceDescriptor, livenessVerified } = req.body;
   const userId = req.user.id;
 
   if (!['start', 'end'].includes(action)) {
@@ -625,6 +772,12 @@ router.post('/ot', async (req, res) => {
     );
     if (!tokenRow) {
       return res.status(400).json({ error: 'Invalid or expired QR token for OT.' });
+    }
+
+    // Layer 2: strict 1:1 face verification (403 on identity mismatch)
+    const faceCheck = await evaluatePunchFace(userId, req.user.email, { faceDescriptor, faceSignature });
+    if (faceCheck.blocked) {
+      return res.status(403).json(faceCheck.blocked);
     }
 
     const todayRecords = await getDayUserRecords(userId);
@@ -661,8 +814,8 @@ router.post('/ot', async (req, res) => {
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, gps_accuracy, distance_meters, geofence_status, capture_method, device_info, ip_address)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, gps_accuracy, distance_meters, geofence_status, capture_method, device_info, ip_address, selfie_data, selfie_sha256, face_match_score, liveness_verified, face_verified)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
       [
         recordId,
         userId,
@@ -685,6 +838,11 @@ router.post('/ot', async (req, res) => {
         'QR_KIOSK_SIGNED',
         resolveDeviceInfo(req, deviceId),
         getClientIp(req),
+        selfieDataUrl || null,
+        selfieSha256 || null,
+        faceCheck.faceMatch,
+        selfieSha256 ? (livenessVerified === false ? 0 : 1) : 0,
+        faceCheck.faceVerified,
       ]
     );
 
@@ -910,8 +1068,9 @@ router.get('/records', async (req, res) => {
 async function computeTeamAttendance(dateInput = null) {
   const bounds = getDayBounds(dateInput);
   const users = await db.allAsync(
-    `SELECT id, name, email, department, avatar, role 
-     FROM users 
+    `SELECT id, name, email, department, avatar, role, face_enrolled,
+            (face_descriptor IS NOT NULL OR face_signature IS NOT NULL) AS has_face_signature
+     FROM users
      WHERE role != 'admin' 
      ORDER BY name ASC`
   );
@@ -1034,6 +1193,7 @@ async function computeTeamAttendance(dateInput = null) {
     return {
       ...u,
       name: cleanUserName(u.name, u.email),
+      faceEnrolled: u.face_enrolled === 1 || Boolean(u.has_face_signature),
       checkInTime,
       checkOutTime,
       breakStartTime,
@@ -1416,7 +1576,7 @@ router.post('/biometric-webhook', async (req, res) => {
 router.get('/face-enrollment', async (req, res) => {
   try {
     const row = await db.getAsync(
-      `SELECT face_signature, face_enrolled_at FROM users WHERE id = $1`,
+      `SELECT face_signature, face_descriptor, face_enrolled, face_enrolled_at, reference_photo FROM users WHERE id = $1`,
       [req.user.id]
     );
     let signature = [];
@@ -1428,9 +1588,21 @@ router.get('/face-enrollment', async (req, res) => {
         signature = [];
       }
     }
+    let descriptor = [];
+    if (row?.face_descriptor) {
+      try {
+        const parsed = JSON.parse(row.face_descriptor);
+        if (Array.isArray(parsed)) descriptor = parsed;
+      } catch {
+        descriptor = [];
+      }
+    }
     res.json({
-      enrolled: signature.length > 0,
+      enrolled: row?.face_enrolled === 1 || signature.length > 0 || descriptor.length > 0,
       signature,
+      descriptor,
+      descriptorLength: descriptor.length,
+      referencePhoto: row?.reference_photo || null,
       enrolledAt: row?.face_enrolled_at || null,
     });
   } catch (err) {

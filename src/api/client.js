@@ -124,6 +124,20 @@ export const api = {
   rejectUser: (id) => request(`/auth/reject/${id}`, { method: 'POST' }),
   deleteUser: (id) => request(`/auth/users/${id}`, { method: 'DELETE' }),
 
+  // ── Biometric Face ID (per-employee 128-D 1:1 enrollment & verification) ──
+  enrollFace: (payload) =>
+    request('/auth/enroll-face', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  verifyFace: (payload) =>
+    request('/auth/verify-face', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  resetFace: (userId) =>
+    request(`/auth/reset-face/${userId}`, { method: 'POST' }),
+
   // QR endpoints
   getCurrentQR: () => request('/qr-token/current'),
   regenerateQR: (locationId, locationName) =>
