@@ -91,6 +91,8 @@ export default function CheckIn({ store }) {
     breakStartTime,
     activeLocation,
     currentQRToken,
+    workMode,
+    setWorkMode,
     checkInWithQR,
     checkOutWithQR,
     startBreak,
@@ -177,6 +179,32 @@ export default function CheckIn({ store }) {
       </div>
 
       <DayTimeline />
+
+      {/* Layer 2: Capture metadata — work mode tag attached to every punch */}
+      <div className="workmode-bar fade-in">
+        <div className="workmode-label">
+          <MapPin size={14} className="text-accent" />
+          <span>Work Mode (tagged to scan)</span>
+        </div>
+        <div className="workmode-options">
+          {[
+            ['hq', 'HQ Workshop'],
+            ['site', 'EPC Project Site'],
+            ['onduty', 'On-Duty Visit'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              id={`workmode-${value}`}
+              className={`filter-tab ${workMode === value ? 'active' : ''}`}
+              onClick={() => setWorkMode(value)}
+              disabled={attendanceState !== 'idle'}
+              title={attendanceState !== 'idle' ? 'Work mode is locked while a shift is active' : `Tag this scan as ${label}`}
+            >
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="checkin-layout">
         {/* Main Status & Action Card */}

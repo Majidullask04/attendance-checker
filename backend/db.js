@@ -91,19 +91,118 @@ const initDb = async () => {
     )`);
 
     // Phase 2: work mode + site reference on each punch (HQ / EPC site / On-Duty)
+    // Phase 3 (Zoho 6-layer): full capture metadata on every punch
     try {
       const infoCols = await db.allAsync(
         `SELECT column_name FROM information_schema.columns WHERE table_name = 'attendance_records'`
       );
       const have = new Set((infoCols || []).map((c) => c.column_name));
-      if (!have.has('work_mode')) {
-        await db.runAsync(`ALTER TABLE attendance_records ADD COLUMN work_mode TEXT`);
-      }
-      if (!have.has('site_ref')) {
-        await db.runAsync(`ALTER TABLE attendance_records ADD COLUMN site_ref TEXT`);
-      }
+      const addColumn = async (col, ddl) => {
+        if (!have.has(col)) {
+          await db.runAsync(`ALTER TABLE attendance_records ADD COLUMN ${ddl}`);
+        }
+      };
+      await addColumn('work_mode', `work_mode TEXT`);
+      await addColumn('site_ref', `site_ref TEXT`);
+      await addColumn('site_code', `site_code TEXT`);
+      await addColumn('capture_method', `capture_method TEXT`);
+      await addColumn('ip_address', `ip_address TEXT`);
+      await addColumn('gps_accuracy', `gps_accuracy REAL`);
+      await addColumn('distance_meters', `distance_meters REAL`);
+      await addColumn('geofence_status', `geofence_status TEXT`);
+      await addColumn('arrival_status', `arrival_status TEXT`);
+      await addColumn('device_info', `device_info TEXT`);
     } catch (colErr) {
       console.log('Work mode column check:', colErr.message);
+    }
+
+    // Layer 4: sites_geofences — geofence coordinates per MR. ELECTRICAL WORKS site
+    await db.runAsync(`CREATE TABLE IF NOT EXISTS sites_geofences (
+      id TEXT PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      radius_meters INTEGER NOT NULL DEFAULT 250,
+      allowed_ips TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Layer 4: daily_attendance_summary — reconciled daily rollup per user/IST date
+    await db.runAsync(`CREATE TABLE IF NOT EXISTS daily_attendance_summary (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      date_ist TEXT NOT NULL,
+      first_check_in TIMESTAMP,
+      last_check_out TIMESTAMP,
+      gross_minutes INTEGER DEFAULT 0,
+      break_minutes INTEGER DEFAULT 0,
+      permission_minutes INTEGER DEFAULT 0,
+      effective_minutes INTEGER DEFAULT 0,
+      deviation_deficit_minutes INTEGER DEFAULT 0,
+      overtime_minutes INTEGER DEFAULT 0,
+      arrival_status TEXT,
+      day_status TEXT,
+      payable_days REAL DEFAULT 0,
+      site_code TEXT,
+      is_locked_for_payroll INTEGER DEFAULT 0,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+    try {
+      await db.runAsync(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_summary_user_date ON daily_attendance_summary (user_id, date_ist)`
+      );
+    } catch (idxErr) {
+      console.log('daily_attendance_summary index check:', idxErr.message);
+    }
+
+    // Layer 5: workflow_requests — unified Regularization / Permission / On-Duty engine
+    await db.runAsync(`CREATE TABLE IF NOT EXISTS workflow_requests (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      date_ist TEXT NOT NULL,
+      request_type TEXT NOT NULL CHECK(request_type IN ('REGULARIZATION','PERMISSION','ON_DUTY')),
+      requested_check_in TEXT,
+      requested_check_out TEXT,
+      permission_minutes INTEGER,
+      site_code TEXT,
+      reason_category TEXT,
+      reason_note TEXT,
+      status TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING','APPROVED','REJECTED')),
+      reviewed_by TEXT,
+      reviewed_at TIMESTAMP,
+      review_comment TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Immutable audit trail for workflow reviews (Regularization / Permission / OD)
+    await db.runAsync(`CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      actor_email TEXT,
+      action TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id TEXT,
+      details TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Seed default geofence sites if empty (HQ workshop + sample EPC substation)
+    const siteCount = await db.getAsync(`SELECT COUNT(*) as count FROM sites_geofences`);
+    if (!siteCount || parseInt(siteCount.count) === 0) {
+      const defaultSites = [
+        ['site-mrew-hq-hyd', 'MREW-HQ-HYD', 'MR. ELECTRICAL WORKS — HQ Workshop (Hyderabad)', 17.385044, 78.486671, 250],
+        ['site-mrew-sub-01', 'MREW-SUB-01', 'EPC Substation Site 01 — Gachibowli', 17.440081, 78.348915, 400],
+        ['site-mrew-sub-02', 'MREW-SUB-02', 'EPC Substation Site 02 — Uppal', 17.400000, 78.560000, 400],
+      ];
+      for (const [id, code, name, lat, lng, radius] of defaultSites) {
+        await db.runAsync(
+          `INSERT INTO sites_geofences (id, code, name, lat, lng, radius_meters, is_active) VALUES ($1,$2,$3,$4,$5,$6,1)
+           ON CONFLICT (code) DO NOTHING`,
+          [id, code, name, lat, lng, radius]
+        );
+      }
+      console.log('Seeded default sites_geofences (HQ + 2 EPC substations)');
     }
 
     // Phase 2: self-service regularization requests (Zoho-style missed-punch fixes)
@@ -203,6 +302,71 @@ async function startup() {
 }
 
 startup();
+
+// ── Layer 4: Daily Attendance Summary Rollup ────────────────────────────────
+// Recomputes the materialized daily_attendance_summary row for one user/date.
+// Called after every accepted punch and every approved workflow request.
+async function recomputeDailySummary(userId, dateString) {
+  try {
+    const { getDayBounds } = await import('./config/policy.js');
+    const { computeDailyAttendanceSummary } = await import('./utils/validationEngine.js');
+    const bounds = getDayBounds(dateString);
+    const dateIST = bounds.dateString;
+
+    const userRow = await db.getAsync(`SELECT id, name, email FROM users WHERE id = $1`, [userId]);
+    if (!userRow) return null;
+
+    const dayRecords = await db.allAsync(
+      `SELECT * FROM attendance_records
+       WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at < $3
+       ORDER BY recorded_at ASC`,
+      [userId, bounds.from, bounds.to]
+    );
+
+    const approvedWorkflows = await db.allAsync(
+      `SELECT * FROM workflow_requests
+       WHERE user_id = $1 AND date_ist = $2 AND status = 'APPROVED'`,
+      [userId, dateIST]
+    );
+
+    const summary = computeDailyAttendanceSummary(dayRecords, approvedWorkflows);
+
+    // Rebuild strategy: delete + insert with ON CONFLICT guard so the UNIQUE
+    // (user_id, date_ist) index stays authoritative and untouched rows keep working.
+    await db.runAsync(`DELETE FROM daily_attendance_summary WHERE user_id = $1 AND date_ist = $2`, [userId, dateIST]);
+    const summaryId = `das-${String(userId).slice(0, 12)}-${dateIST}`;
+    await db.runAsync(
+      `INSERT INTO daily_attendance_summary
+       (id, user_id, date_ist, first_check_in, last_check_out, gross_minutes, break_minutes,
+        permission_minutes, effective_minutes, deviation_deficit_minutes, overtime_minutes,
+        arrival_status, day_status, payable_days, site_code)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       ON CONFLICT (user_id, date_ist) DO NOTHING`,
+      [
+        summaryId,
+        userId,
+        dateIST,
+        summary.firstCheckIn,
+        summary.lastCheckOut,
+        summary.grossMinutes,
+        summary.breakMinutes,
+        summary.permissionMinutes,
+        summary.effectiveMinutes,
+        summary.deviationDeficitMinutes,
+        summary.overtimeMinutes,
+        summary.arrivalStatus,
+        summary.dayStatus,
+        summary.payableDays,
+        summary.siteCode,
+      ]
+    );
+    return { ...summary, dateIST, userId };
+  } catch (err) {
+    console.error('recomputeDailySummary error:', err.message);
+    return null;
+  }
+}
+
 setInterval(async () => {
   try {
     const result = await db.runAsync(`DELETE FROM used_tokens WHERE used_at < NOW() - INTERVAL '7 days'`);
@@ -212,4 +376,5 @@ setInterval(async () => {
   }
 }, 24 * 60 * 60 * 1000);
 
+export { recomputeDailySummary };
 export default db;

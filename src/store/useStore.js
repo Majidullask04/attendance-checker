@@ -46,6 +46,11 @@ export function useAttendanceStore() {
   const [offlineQueue, setOfflineQueue] = useState(api.getOfflineQueue());
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => getZonedNow().dateString);
+  // Layer 2: capture metadata — work mode tag attached to every punch
+  const [workMode, setWorkMode] = useState('hq'); // hq | site | onduty
+  // Layer 5: workflow requests (Regularization / Permission / On-Duty)
+  const [workflowRequests, setWorkflowRequests] = useState([]);
+  const [pendingWorkflows, setPendingWorkflows] = useState(0);
 
   // Online / offline listeners
   useEffect(() => {
@@ -171,6 +176,46 @@ export function useAttendanceStore() {
     }
   }, [authUser?.role]);
 
+  // ── Layer 5: workflow request loading ─────────────────────────────────────
+  const loadWorkflows = useCallback(async () => {
+    if (!authUser) return;
+    try {
+      const data = await api.getWorkflows();
+      setWorkflowRequests(data.requests || []);
+      if (authUser.role === 'admin') {
+        try {
+          const countData = await api.getPendingWorkflowCount();
+          setPendingWorkflows(countData.pending || 0);
+        } catch {
+          /* badge count is non-critical */
+        }
+      }
+    } catch (err) {
+      console.error('Error loading workflows:', err);
+    }
+  }, [authUser]);
+
+  const submitWorkflowRequest = useCallback(
+    async (payload) => {
+      const res = await api.createWorkflow(payload);
+      addToast(res.message || 'Request submitted for admin approval.', 'success');
+      await loadWorkflows();
+      return res;
+    },
+    [addToast, loadWorkflows]
+  );
+
+  const reviewWorkflowRequest = useCallback(
+    async (id, status, reviewComment = '') => {
+      const res = await api.reviewWorkflow(id, status, reviewComment);
+      addToast(res.message || `Request ${status.toLowerCase()}.`, status === 'APPROVED' ? 'success' : 'warning');
+      await loadWorkflows();
+      setPendingWorkflows((count) => Math.max(0, count + (status === 'APPROVED' || status === 'REJECTED' ? -1 : 0)));
+      return res;
+    },
+    [addToast, loadWorkflows]
+  );
+
   const syncOfflineQueue = useCallback(async () => {
     if (isSyncing) return;
     setIsSyncing(true);
@@ -197,6 +242,7 @@ export function useAttendanceStore() {
     if (authUser) {
       loadRecords();
       loadCurrentQR();
+      loadWorkflows();
       if (authUser.role === 'admin') {
         loadTeamData();
         loadAuditData();
@@ -207,7 +253,7 @@ export function useAttendanceStore() {
         syncOfflineQueue();
       }
     }
-  }, [authUser, loadRecords, loadCurrentQR, loadTeamData, loadAuditData, syncOfflineQueue]);
+  }, [authUser, loadRecords, loadCurrentQR, loadTeamData, loadAuditData, syncOfflineQueue, loadWorkflows]);
 
   // ── Admin Polling: live refresh every 10 seconds ──────────────────────────
   useEffect(() => {
@@ -215,9 +261,10 @@ export function useAttendanceStore() {
     const intervalId = setInterval(() => {
       loadTeamData(selectedDate);
       loadAuditData();
+      loadWorkflows();
     }, 10000);
     return () => clearInterval(intervalId);
-  }, [authUser, selectedDate, loadTeamData, loadAuditData]);
+  }, [authUser, selectedDate, loadTeamData, loadAuditData, loadWorkflows]);
 
   // ── 1:50 PM Break Notification Checker ────────────────────────────────────
   useEffect(() => {
@@ -301,6 +348,8 @@ export function useAttendanceStore() {
           accuracyMeters: Math.floor(Math.random() * 8) + 4,
           deviceId: authUser?.deviceId || 'web-client',
           deviceTimestamp: new Date().toISOString(),
+          workMode,
+          siteRef: activeLocation?.id || null,
         });
 
         if (res.offline) {
@@ -338,7 +387,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [attendanceState, activeLocation, authUser, addToast, loadRecords, loadTeamData, loadAuditData]
+    [attendanceState, activeLocation, authUser, workMode, addToast, loadRecords, loadTeamData, loadAuditData]
   );
 
   const checkOutWithQR = useCallback(
@@ -366,6 +415,8 @@ export function useAttendanceStore() {
           accuracyMeters: Math.floor(Math.random() * 8) + 4,
           deviceId: authUser?.deviceId || 'web-client',
           deviceTimestamp: new Date().toISOString(),
+          workMode,
+          siteRef: activeLocation?.id || null,
         });
 
         if (res.offline) {
@@ -393,7 +444,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [attendanceState, activeLocation, authUser, addToast, loadRecords, loadTeamData, loadAuditData]
+    [attendanceState, activeLocation, authUser, workMode, addToast, loadRecords, loadTeamData, loadAuditData]
   );
 
   // ── Breaks ────────────────────────────────────────────────────────────────
@@ -565,7 +616,9 @@ export function useAttendanceStore() {
     checkedOut: teamSummary.filter((e) => e.status === 'checked_out').length,
     otToday: teamSummary.filter((e) => e.status === 'overtime' || e.otHours > 0).length,
     flaggedRecords: auditRecords.filter((r) => r.status === 'flagged').length,
+    onBreakToday: teamSummary.filter((e) => e.status === 'on_break').length,
     totalEmployees: teamSummary.length || 6,
+    pendingWorkflows,
   };
 
   return {
@@ -595,6 +648,13 @@ export function useAttendanceStore() {
     setActiveLocation,
     selectedDate,
     setSelectedDate,
+    workMode,
+    setWorkMode,
+    workflowRequests,
+    pendingWorkflows,
+    loadWorkflows,
+    submitWorkflowRequest,
+    reviewWorkflowRequest,
     checkInWithQR,
     checkOutWithQR,
     startBreak,

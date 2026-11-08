@@ -20,6 +20,7 @@ export default function Sidebar({
   setActiveScreen,
   currentUser,
   stats = {},
+  pendingWorkflows = 0,
   isOnline,
   offlineQueue = 0,
   isMobileOpen = false,
@@ -53,7 +54,7 @@ export default function Sidebar({
           id: 'approvals',
           label: 'Pending Approvals',
           icon: <UserCheck size={18} strokeWidth={2} />,
-          badge: null
+          badge: pendingWorkflows > 0 ? pendingWorkflows : null,
         },
         {
           id: 'team',

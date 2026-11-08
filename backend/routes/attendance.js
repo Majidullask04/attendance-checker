@@ -1,11 +1,16 @@
 import { Router } from 'express';
 import { randomUUID, randomInt } from 'crypto';
 import PDFDocument from 'pdfkit';
-import db from '../db.js';
+import db, { recomputeDailySummary } from '../db.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { POLICY, getDayBounds, getZonedDateTime, evaluateScanStatus, timeToMinutes } from '../config/policy.js';
 import { verifyQRSignedWindow } from '../utils/qrSign.js';
 import { cleanUserName } from '../utils/formatters.js';
+import {
+  calculateDistanceMeters,
+  classifyISTArrival,
+  validatePunchSequence,
+} from '../utils/validationEngine.js';
 
 const router = Router();
 
@@ -15,6 +20,72 @@ function sanitizeRecord(record) {
     ...record,
     userName: cleanUserName(record.userName, record.userEmail),
   };
+}
+
+// Layer 2: extract client IP (proxy-aware) for WEB_IP capture
+function getClientIp(req) {
+  const fwd = req.headers?.['x-forwarded-for'];
+  if (typeof fwd === 'string' && fwd.trim()) {
+    return fwd.split(',')[0].trim();
+  }
+  return req.socket?.remoteAddress || null;
+}
+
+// Layer 2: platform tag from device fingerprint hints
+function resolveDeviceInfo(req, deviceId = null) {
+  const explicit = (req.body?.deviceInfo || '').toString().trim().toUpperCase();
+  if (['WEB_DESKTOP', 'ANDROID_CAPACITOR', 'MOBILE_WEB', 'KIOSK', 'BIOMETRIC'].includes(explicit)) {
+    return explicit;
+  }
+  const ua = (req.headers?.['user-agent'] || '').toLowerCase();
+  if (ua.includes('capacitor') || ua.includes('android')) return 'ANDROID_CAPACITOR';
+  if (/iphone|ipad|mobile/.test(ua)) return 'MOBILE_WEB';
+  return deviceId === 'web-client' ? 'WEB_DESKTOP' : 'WEB_DESKTOP';
+}
+
+// Layer 3 Gate 3: geofence evaluation against sites_geofences.
+// Returns { status, distance, matchedSite } where status is one of
+// 'IN_ZONE' | 'OUTSIDE_GEOFENCE' | 'APPROVED_ON_DUTY' | 'UNVERIFIED'.
+async function evaluateGeofence({ latitude, longitude, siteCode, workMode }) {
+  try {
+    const sites = await db.allAsync(
+      `SELECT code, name, lat, lng, radius_meters FROM sites_geofences WHERE is_active = 1`
+    );
+
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+    const hasCoords = latitude != null && longitude != null && !Number.isNaN(lat) && !Number.isNaN(lng);
+
+    let best = null;
+    if (sites.length && hasCoords) {
+      // Haversine distance to every active site; nearest wins unless a matching
+      // site code was explicitly requested by the client.
+      for (const site of sites) {
+        const d = calculateDistanceMeters(lat, lng, site.lat, site.lng);
+        if (d == null) continue;
+        const preferred = siteCode && site.code === siteCode;
+        if (!best || preferred || (d < best.distance && !best.isPreferred)) {
+          best = { site, distance: d, isPreferred: preferred };
+        }
+      }
+    }
+
+    if (workMode === 'onduty') {
+      return { status: 'APPROVED_ON_DUTY', distance: best?.distance ?? null, matchedSite: best?.site.code ?? siteCode ?? null };
+    }
+    if (best) {
+      const radius = Number(best.site.radius_meters) || 0;
+      return {
+        status: best.distance <= radius ? 'IN_ZONE' : 'OUTSIDE_GEOFENCE',
+        distance: best.distance,
+        matchedSite: best.site.code,
+      };
+    }
+    return { status: 'UNVERIFIED', distance: null, matchedSite: siteCode ?? null };
+  } catch (geoErr) {
+    console.error('Geofence evaluation error:', geoErr.message);
+    return { status: 'UNVERIFIED', distance: null, matchedSite: siteCode ?? null };
+  }
 }
 
 // Helper: get records for user on a specific calendar day in policy timezone
@@ -77,7 +148,7 @@ router.get('/policy', (req, res) => {
 
 // POST /api/attendance/check-in
 router.post('/check-in', async (req, res) => {
-  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef, inZone } = req.body;
+  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef } = req.body;
   const userId = req.user.id;
 
   const parsed = parseQRPayload(req.body);
@@ -116,22 +187,36 @@ router.post('/check-in', async (req, res) => {
       return res.status(400).json({ error: 'You already have an active shift checked in today.' });
     }
 
+    // Layer 3: run the duplicate-cooldown + sequence gates before writing
+    const sequenceCheck = validatePunchSequence(todayRecords, 'check_in', Date.now());
+    if (!sequenceCheck.valid) {
+      return res.status(409).json({ error: sequenceCheck.message, code: sequenceCheck.code });
+    }
+
     const recordId = `rec-${randomUUID()}`;
     const now = new Date().toISOString();
     const confidence = randomInt(88, 100);
 
-    // Evaluate check-in time against policy (<= 09:00 -> on-time, 09:00–09:15 -> grace, > 09:15 -> late)
+    // Layer 3 Gate 4: IST arrival classification (ON_TIME / GRACE_BUFFER / LATE_ARRIVAL)
     const scanEvaluation = evaluateScanStatus(new Date(), 'check_in');
-    // Out-of-boundary punches are recorded but flagged for admin review
-    const isInZone = !(inZone === false || inZone === 'false');
-    const status = !isInZone ? 'flagged' : (scanEvaluation === 'late' ? 'late' : 'verified');
-    const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : null;
+    const arrival = classifyISTArrival(Date.now());
+
+    // Layer 3 Gate 3: multi-site geofence + Layer 2 IP/device capture metadata
+    const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : 'hq';
     const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
+    const geo = await evaluateGeofence({ latitude, longitude, siteCode: cleanSiteRef, workMode: cleanWorkMode });
+    const deviceInfo = resolveDeviceInfo(req, deviceId);
+    const ipAddress = getClientIp(req);
+    const gpsAccuracy = Number(accuracyMeters) || 10;
+
+    // Out-of-boundary punches are recorded but flagged for admin review
+    const isInZone = geo.status !== 'OUTSIDE_GEOFENCE';
+    const status = !isInZone ? 'flagged' : (scanEvaluation === 'late' ? 'late' : 'verified');
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref, site_code, capture_method, ip_address, gps_accuracy, distance_meters, geofence_status, arrival_status, device_info)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
       [
         recordId,
         userId,
@@ -142,7 +227,7 @@ router.post('/check-in', async (req, res) => {
         deviceTimestamp || now,
         latitude || null,
         longitude || null,
-        accuracyMeters || 10,
+        gpsAccuracy,
         deviceId || req.user.deviceId || 'web-client',
         'qr_code',
         confidence,
@@ -150,6 +235,14 @@ router.post('/check-in', async (req, res) => {
         tokenString,
         cleanWorkMode,
         cleanSiteRef,
+        geo.matchedSite || cleanSiteRef,
+        'QR_KIOSK_SIGNED',
+        ipAddress,
+        gpsAccuracy,
+        geo.distance,
+        geo.status,
+        arrival.arrivalStatus,
+        deviceInfo,
       ]
     );
 
@@ -157,6 +250,9 @@ router.post('/check-in', async (req, res) => {
       `INSERT INTO used_tokens (token, user_id, action_type) VALUES ($1,$2, 'check_in')`,
       [tokenString, userId]
     );
+
+    // Layer 4: reconcile the daily rollup row after every accepted punch
+    const rollup = await recomputeDailySummary(userId, arrival.dateIST);
 
     const record = await db.getAsync(
       `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
@@ -175,7 +271,9 @@ router.post('/check-in', async (req, res) => {
       success: true,
       record: sanitizeRecord(record),
       timing: scanEvaluation,
-      zone: isInZone ? 'in_zone' : 'out_of_zone',
+      zone: isInZone ? geo.status.toLowerCase() : 'out_of_zone',
+      geofence: { status: geo.status, distanceMeters: geo.distance, siteCode: geo.matchedSite },
+      summary: rollup,
       message: isInZone ? checkInMessage : `Outside geofence — punch recorded for admin review. ${checkInMessage}`,
     });
   } catch (err) {
@@ -215,23 +313,53 @@ router.post('/check-out', async (req, res) => {
       return res.status(400).json({ error: 'No active shift found to check out from.' });
     }
 
-    // Invalid sequence guard: cannot check out while a break is still open
-    const lastBreakStart = [...todayRecords].reverse().find((r) => r.record_type === 'break_start');
-    const lastBreakEnd = [...todayRecords].reverse().find((r) => r.record_type === 'break_end');
-    const isOnBreak = lastBreakStart && (!lastBreakEnd || new Date(lastBreakEnd.recorded_at) < new Date(lastBreakStart.recorded_at));
-    if (isOnBreak) {
-      return res.status(400).json({ error: 'You are on an active break — end the break before checking out.' });
+    // Layer 3: duplicate-cooldown + sequence gates (incl. open-break handling)
+    const sequenceCheck = validatePunchSequence(todayRecords, 'check_out', Date.now());
+    if (!sequenceCheck.valid) {
+      return res.status(409).json({ error: sequenceCheck.message, code: sequenceCheck.code });
     }
+    // Zoho-style auto-close: an open break is closed at checkout time so break
+    // duration is never left dangling or corrupted.
+    if (sequenceCheck.autoCloseBreak) {
+      const lastBreakStart = [...todayRecords].reverse().find((r) => r.record_type === 'break_start');
+      const openBreakEnd = [...todayRecords].reverse().find(
+        (r) => r.record_type === 'break_end' &&
+          new Date(r.recorded_at) > new Date(lastBreakStart.recorded_at)
+      );
+      if (lastBreakStart && !openBreakEnd) {
+        await db.runAsync(
+          `INSERT INTO attendance_records
+           (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, device_id, verified_by, confidence_score, status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'auto_close',100,'verified')`,
+          [
+            `rec-${randomUUID()}`,
+            userId,
+            'loc-001',
+            'Main Warehouse',
+            'break_end',
+            new Date().toISOString(),
+            new Date().toISOString(),
+            deviceId || req.user.deviceId || 'web-client',
+          ]
+        );
+      }
+    }
+
+    const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : 'hq';
+    const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
+    const geo = await evaluateGeofence({ latitude, longitude, siteCode: cleanSiteRef, workMode: cleanWorkMode });
+    const deviceInfo = resolveDeviceInfo(req, deviceId);
+    const ipAddress = getClientIp(req);
+    const gpsAccuracy = Number(accuracyMeters) || 10;
+    const arrival = classifyISTArrival(Date.now());
 
     const recordId = `rec-${randomUUID()}`;
     const now = new Date().toISOString();
-    const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : null;
-    const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref, site_code, capture_method, ip_address, gps_accuracy, distance_meters, geofence_status, arrival_status, device_info)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
       [
         recordId,
         userId,
@@ -242,7 +370,7 @@ router.post('/check-out', async (req, res) => {
         deviceTimestamp || now,
         latitude || null,
         longitude || null,
-        accuracyMeters || 10,
+        gpsAccuracy,
         deviceId || req.user.deviceId || 'web-client',
         'qr_code',
         95,
@@ -250,6 +378,14 @@ router.post('/check-out', async (req, res) => {
         tokenString,
         cleanWorkMode,
         cleanSiteRef,
+        geo.matchedSite || cleanSiteRef,
+        'QR_KIOSK_SIGNED',
+        ipAddress,
+        gpsAccuracy,
+        geo.distance,
+        geo.status,
+        null,
+        deviceInfo,
       ]
     );
 
@@ -258,6 +394,9 @@ router.post('/check-out', async (req, res) => {
       [tokenString, userId]
     );
 
+    // Layer 4: reconcile the daily rollup row after every accepted punch
+    const rollup = await recomputeDailySummary(userId, arrival.dateIST);
+
     const record = await db.getAsync(
       `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
        FROM attendance_records ar 
@@ -265,7 +404,12 @@ router.post('/check-out', async (req, res) => {
        WHERE ar.id = $1`,
       [recordId]
     );
-    res.json({ success: true, record: sanitizeRecord(record), message: 'Checked out successfully. Shift ended.' });
+    res.json({
+      success: true,
+      record: sanitizeRecord(record),
+      summary: rollup,
+      message: 'Checked out successfully. Shift ended.',
+    });
   } catch (err) {
     console.error('Check-out error:', err);
     res.status(500).json({ error: 'Internal server error during check-out processing.' });
@@ -283,30 +427,23 @@ router.post('/break', async (req, res) => {
 
   try {
     const todayRecords = await getDayUserRecords(userId);
-    const lastIn = [...todayRecords].reverse().find((r) => r.record_type === 'check_in');
-    const lastOut = [...todayRecords].reverse().find((r) => r.record_type === 'check_out');
-    const isShiftActive = lastIn && (!lastOut || new Date(lastOut.recorded_at) < new Date(lastIn.recorded_at));
+    const nextType = action === 'start' ? 'break_start' : 'break_end';
 
-    if (!isShiftActive) {
-      return res.status(400).json({ error: 'You must have an active shift to take a break.' });
+    // Layer 3: duplicate-cooldown + strict sequence gates
+    const sequenceCheck = validatePunchSequence(todayRecords, nextType, Date.now());
+    if (!sequenceCheck.valid) {
+      return res.status(409).json({ error: sequenceCheck.message, code: sequenceCheck.code });
     }
-
-    const lastBreakStart = [...todayRecords].reverse().find((r) => r.record_type === 'break_start');
-    const lastBreakEnd = [...todayRecords].reverse().find((r) => r.record_type === 'break_end');
-    const isOnBreak = lastBreakStart && (!lastBreakEnd || new Date(lastBreakEnd.recorded_at) < new Date(lastBreakStart.recorded_at));
 
     const now = new Date().toISOString();
     const recordId = `rec-${randomUUID()}`;
+    const geo = await evaluateGeofence({ latitude, longitude, workMode: 'hq' });
 
     if (action === 'start') {
-      if (isOnBreak) {
-        return res.status(400).json({ error: 'You are already on break.' });
-      }
-
       await db.runAsync(
         `INSERT INTO attendance_records 
-         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, gps_accuracy, distance_meters, geofence_status, arrival_status, capture_method, device_info, ip_address)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
         [
           recordId,
           userId,
@@ -317,11 +454,18 @@ router.post('/break', async (req, res) => {
           now,
           latitude || null,
           longitude || null,
-          accuracyMeters || 10,
+          Number(accuracyMeters) || 10,
           deviceId || req.user.deviceId || 'web-client',
           'app_action',
           95,
           'verified',
+          Number(accuracyMeters) || 10,
+          geo.distance,
+          geo.status,
+          null,
+          'GPS_MOBILE_GEOFENCE',
+          resolveDeviceInfo(req, deviceId),
+          getClientIp(req),
         ]
       );
 
@@ -332,66 +476,68 @@ router.post('/break', async (req, res) => {
          WHERE ar.id = $1`,
         [recordId]
       );
-      return res.json({ success: true, record: sanitizeRecord(record), message: 'Break started. Timer running (30-40 min).' });
+    const rollup = await recomputeDailySummary(userId, classifyISTArrival(Date.now()).dateIST);
+    return res.json({ success: true, record: sanitizeRecord(record), summary: rollup, message: 'Break started. Timer running (30-40 min).' });
     }
 
-    if (action === 'end') {
-      if (!isOnBreak) {
-        return res.status(400).json({ error: 'You are not currently on break.' });
-      }
-
-      // Break end MUST be verified with QR scan
-      const parsed = parseQRPayload(req.body);
-      if (parsed.error) {
-        return res.status(400).json({ error: `QR scan required to end break: ${parsed.error}` });
-      }
-      const { data, tokenString } = parsed;
-
-      const tokenRow = await db.getAsync(
-        `SELECT * FROM qr_tokens WHERE token = $1 AND is_active = 1`,
-        [tokenString]
-      );
-      if (!tokenRow) {
-        return res.status(400).json({ error: 'Invalid or expired QR token. Please scan the current station QR code.' });
-      }
-
-      await db.runAsync(
-        `INSERT INTO attendance_records 
-         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
-        [
-          recordId,
-          userId,
-          data.locationId || data.l || tokenRow.location_id,
-          data.locationName || tokenRow.location_name || 'Main Warehouse',
-          'break_end',
-          now,
-          now,
-          latitude || null,
-          longitude || null,
-          accuracyMeters || 10,
-          deviceId || req.user.deviceId || 'web-client',
-          'qr_code',
-          98,
-          'verified',
-          tokenString,
-        ]
-      );
-
-      await db.runAsync(
-        `INSERT INTO used_tokens (token, user_id, action_type) VALUES ($1,$2, 'break_end')`,
-        [tokenString, userId]
-      );
-
-      const record = await db.getAsync(
-        `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
-         FROM attendance_records ar 
-         LEFT JOIN users u ON ar.user_id = u.id 
-         WHERE ar.id = $1`,
-        [recordId]
-      );
-      return res.json({ success: true, record: sanitizeRecord(record), message: 'Break ended via QR scan. Shift resumed!' });
+    // action === 'end' — QR scan required to resume
+    const parsed = parseQRPayload(req.body);
+    if (parsed.error) {
+      return res.status(400).json({ error: `QR scan required to end break: ${parsed.error}` });
     }
+    const { data, tokenString } = parsed;
+
+    const tokenRow = await db.getAsync(
+      `SELECT * FROM qr_tokens WHERE token = $1 AND is_active = 1`,
+      [tokenString]
+    );
+    if (!tokenRow) {
+      return res.status(400).json({ error: 'Invalid or expired QR token. Please scan the current station QR code.' });
+    }
+
+    await db.runAsync(
+      `INSERT INTO attendance_records 
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, gps_accuracy, distance_meters, geofence_status, capture_method, device_info, ip_address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+      [
+        recordId,
+        userId,
+        data.locationId || data.l || tokenRow.location_id,
+        data.locationName || tokenRow.location_name || 'Main Warehouse',
+        'break_end',
+        now,
+        now,
+        latitude || null,
+        longitude || null,
+        Number(accuracyMeters) || 10,
+        deviceId || req.user.deviceId || 'web-client',
+        'qr_code',
+        98,
+        'verified',
+        tokenString,
+        Number(accuracyMeters) || 10,
+        geo.distance,
+        geo.status,
+        'QR_KIOSK_SIGNED',
+        resolveDeviceInfo(req, deviceId),
+        getClientIp(req),
+      ]
+    );
+
+    await db.runAsync(
+      `INSERT INTO used_tokens (token, user_id, action_type) VALUES ($1,$2, 'break_end')`,
+      [tokenString, userId]
+    );
+
+    const record = await db.getAsync(
+      `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
+       FROM attendance_records ar 
+       LEFT JOIN users u ON ar.user_id = u.id 
+       WHERE ar.id = $1`,
+      [recordId]
+    );
+    const rollup = await recomputeDailySummary(userId, classifyISTArrival(Date.now()).dateIST);
+    return res.json({ success: true, record: sanitizeRecord(record), summary: rollup, message: 'Break ended via QR scan. Shift resumed!' });
   } catch (err) {
     console.error('Break action error:', err);
     res.status(500).json({ error: 'Internal server error during break processing.' });
@@ -423,6 +569,14 @@ router.post('/ot', async (req, res) => {
     }
 
     const todayRecords = await getDayUserRecords(userId);
+    const nextType = action === 'start' ? 'ot_start' : 'ot_end';
+
+    // Layer 3: duplicate-cooldown + sequence gates (check-in required, no open break)
+    const sequenceCheck = validatePunchSequence(todayRecords, nextType, Date.now());
+    if (!sequenceCheck.valid) {
+      return res.status(409).json({ error: sequenceCheck.message, code: sequenceCheck.code });
+    }
+
     const lastOtStart = [...todayRecords].reverse().find((r) => r.record_type === 'ot_start');
     const lastOtEnd = [...todayRecords].reverse().find((r) => r.record_type === 'ot_end');
     const isOtActive = lastOtStart && (!lastOtEnd || new Date(lastOtEnd.recorded_at) < new Date(lastOtStart.recorded_at));
@@ -444,11 +598,12 @@ router.post('/ot', async (req, res) => {
     const recordType = action === 'start' ? 'ot_start' : 'ot_end';
     const recordId = `rec-${randomUUID()}`;
     const now = new Date().toISOString();
+    const geo = await evaluateGeofence({ latitude, longitude, workMode: 'hq' });
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, gps_accuracy, distance_meters, geofence_status, capture_method, device_info, ip_address)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
       [
         recordId,
         userId,
@@ -459,12 +614,18 @@ router.post('/ot', async (req, res) => {
         now,
         latitude || null,
         longitude || null,
-        accuracyMeters || 10,
+        Number(accuracyMeters) || 10,
         deviceId || req.user.deviceId || 'web-client',
         'qr_code',
         98,
         'verified',
         tokenString,
+        Number(accuracyMeters) || 10,
+        geo.distance,
+        geo.status,
+        'QR_KIOSK_SIGNED',
+        resolveDeviceInfo(req, deviceId),
+        getClientIp(req),
       ]
     );
 
@@ -472,6 +633,8 @@ router.post('/ot', async (req, res) => {
       `INSERT INTO used_tokens (token, user_id, action_type) VALUES ($1,$2, $3)`,
       [tokenString, userId, recordType]
     );
+
+    const rollup = await recomputeDailySummary(userId, classifyISTArrival(Date.now()).dateIST);
 
     const record = await db.getAsync(
       `SELECT ar.*, COALESCE(u.name, u.email, 'Employee') AS userName, u.email AS userEmail, u.avatar 
@@ -483,6 +646,7 @@ router.post('/ot', async (req, res) => {
     res.json({
       success: true,
       record: sanitizeRecord(record),
+      summary: rollup,
       message: action === 'start' ? 'Overtime started! Extra work timer is running.' : 'Overtime session stopped.',
     });
   } catch (err) {
@@ -557,6 +721,7 @@ router.post('/sync-batch', async (req, res) => {
 
   const results = [];
   const ALLOWED_TYPES = ['check_in', 'check_out', 'break_start', 'break_end', 'ot_start', 'ot_end'];
+  const syncedDates = new Set();
 
   for (const entry of offlineRecords) {
     const { type, qrPayload, timestamp, deviceId: offlineDeviceId, latitude, longitude, workMode, siteRef, inZone } = entry;
@@ -595,14 +760,15 @@ router.post('/sync-batch', async (req, res) => {
       const status = isStillActive && !isOutOfZone ? 'verified' : 'flagged';
       const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : null;
       const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
+      const arrival = classifyISTArrival(new Date(recordedAt).getTime());
 
       const recordId = `rec-${randomUUID()}`;
       const recordedAt = timestamp || new Date().toISOString();
 
       await db.runAsync(
         `INSERT INTO attendance_records 
-         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, is_offline_sync, work_mode, site_ref)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1,$16,$17)`,
+         (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, is_offline_sync, work_mode, site_ref, capture_method, arrival_status, gps_accuracy, ip_address)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1,$16,$17,$18,$19,$20,$21)`,
         [
           recordId,
           userId,
@@ -621,14 +787,24 @@ router.post('/sync-batch', async (req, res) => {
           tokenString,
           cleanWorkMode,
           cleanSiteRef,
+          'QR_KIOSK_SIGNED',
+          arrival.arrivalStatus,
+          10,
+          getClientIp(req),
         ]
       );
 
+      syncedDates.add(arrival.dateIST);
       results.push({ success: true, recordId, status, type });
     } catch (err) {
       console.error('Offline sync error for entry:', err);
       results.push({ error: 'DB write failed', entry });
     }
+  }
+
+  // Layer 4: reconcile affected IST days once after the whole batch lands
+  for (const dateIST of syncedDates) {
+    await recomputeDailySummary(userId, dateIST);
   }
 
   res.json({ synced: results.filter((r) => r.success).length, total: offlineRecords.length, results });
@@ -1054,6 +1230,139 @@ router.patch('/correct/:id', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('Error correcting record:', err);
     res.status(500).json({ error: 'Failed to submit correction.' });
+  }
+});
+
+// ── Layer 2: Biometric Terminal Webhook ─────────────────────────────────────
+// POST /api/attendance/biometric-webhook
+//accepts standard on-site terminal payloads:
+// { employeeCode|employee_id|email, deviceSn, punchType: IN|OUT|BREAK_IN|BREAK_OUT|OT_IN|OT_OUT, timestamp }
+// Auth: header `x-device-key` must equal BIOMETRIC_DEVICE_KEY (no employee JWT).
+function mapBiometricPunchType(rawType) {
+  const type = (rawType || '').toString().trim().toUpperCase();
+  const MAP = {
+    IN: 'check_in',
+    OUT: 'check_out',
+    BREAK_IN: 'break_start',
+    BREAK_OUT: 'break_end',
+    OT_IN: 'ot_start',
+    OT_OUT: 'ot_end',
+    CHECK_IN: 'check_in',
+    CHECK_OUT: 'check_out',
+    BREAK_START: 'break_start',
+    BREAK_END: 'break_end',
+    OT_START: 'ot_start',
+    OT_END: 'ot_end',
+  };
+  return MAP[type] || null;
+}
+
+function parseBiometricTimestamp(raw) {
+  if (!raw) return new Date().toISOString();
+  // ISO with explicit zone/time designator -> trust it
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+  }
+  // Naive "YYYY-MM-DD HH:mm:ss" -> interpret device clock as IST (+05:30)
+  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?/.exec(raw);
+  if (!match) return new Date().toISOString();
+  return new Date(`${match[1]}T${match[2]}:${match[3] || '00'}+05:30`).toISOString();
+}
+
+router.post('/biometric-webhook', async (req, res) => {
+  if (!process.env.BIOMETRIC_DEVICE_KEY) {
+    return res.status(503).json({
+      error: 'Biometric webhook is not configured. Set BIOMETRIC_DEVICE_KEY in the backend environment to enable terminal ingest.',
+    });
+  }
+  if ((req.headers?.['x-device-key'] || '') !== process.env.BIOMETRIC_DEVICE_KEY) {
+    return res.status(401).json({ error: 'Invalid biometric device key.' });
+  }
+
+  const employeeCode = req.body?.employeeCode || req.body?.employee_id || req.body?.employeeId;
+  const email = req.body?.email;
+  const deviceSn = (req.body?.deviceSn || req.body?.device_sn || 'unknown-terminal').toString().slice(0, 64);
+  const recordType = mapBiometricPunchType(req.body?.punchType || req.body?.punch_type);
+  const recordedAt = parseBiometricTimestamp(req.body?.timestamp || req.body?.punch_time_ist);
+
+  if (!employeeCode && !email) {
+    return res.status(400).json({ error: 'employeeCode (or email) and punchType are required.' });
+  }
+  if (!recordType) {
+    return res.status(400).json({
+      error: 'punchType must be one of: IN, OUT, BREAK_IN, BREAK_OUT, OT_IN, OT_OUT.',
+    });
+  }
+
+  try {
+    const user = await db.getAsync(
+      email
+        ? `SELECT id, email, name FROM users WHERE LOWER(email) = $1 AND is_approved = 1`
+        : `SELECT id, email, name FROM users WHERE (device_id = $1 OR id = $2 OR LOWER(email) = $3) AND is_approved = 1 LIMIT 1`,
+      email ? [String(email).toLowerCase()] : [employeeCode, employeeCode, String(employeeCode).toLowerCase()]
+    );
+    if (!user) {
+      return res.status(404).json({ error: `No approved employee matched "${email || employeeCode}" in the attendance directory.` });
+    }
+
+    const { dateIST } = classifyISTArrival(new Date(recordedAt).getTime());
+    const bounds = getDayBounds(dateIST);
+    const dayRecords = await db.allAsync(
+      `SELECT * FROM attendance_records
+       WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at < $3
+       ORDER BY recorded_at ASC`,
+      [user.id, bounds.from, bounds.to]
+    );
+
+    const sequenceCheck = validatePunchSequence(dayRecords, recordType, new Date(recordedAt).getTime());
+    if (!sequenceCheck.valid) {
+      return res.status(409).json({ error: sequenceCheck.message, code: sequenceCheck.code });
+    }
+
+    await db.runAsync(
+      `INSERT INTO attendance_records
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, verified_by, confidence_score, status, capture_method, device_info, ip_address, work_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'verified','BIOMETRIC_TERMINAL',$10,$11,'hq')`,
+      [
+        `rec-${randomUUID()}`,
+        user.id,
+        'bio-001',
+        `Biometric Terminal (${deviceSn})`,
+        recordType,
+        recordedAt,
+        recordedAt,
+        'biometric_device',
+        99,
+        deviceSn,
+        getClientIp(req),
+      ]
+    );
+
+    const rollup = await recomputeDailySummary(user.id, dateIST);
+
+    return res.status(201).json({
+      success: true,
+      accepted: { userId: user.id, punchType: recordType, recordedAt },
+      summary: rollup,
+      message: 'Biometric punch accepted and reconciled into the daily rollup.',
+    });
+  } catch (err) {
+    console.error('Biometric webhook error:', err);
+    return res.status(500).json({ error: 'Failed to ingest biometric punch.' });
+  }
+});
+
+// ── Layer 3/4: Active geofence sites (public to authenticated employees) ────
+router.get('/sites', async (req, res) => {
+  try {
+    const sites = await db.allAsync(
+      `SELECT code, name, lat, lng, radius_meters AS radiusMeters FROM sites_geofences WHERE is_active = 1 ORDER BY code ASC`
+    );
+    res.json({ sites });
+  } catch (err) {
+    console.error('Sites listing error:', err);
+    res.status(500).json({ error: 'Failed to retrieve geofence sites.' });
   }
 });
 

@@ -138,13 +138,13 @@ export const api = {
     offlineAwareRequest(
       '/attendance/check-in',
       { method: 'POST', body: JSON.stringify(payload) },
-      { type: 'check_in', qrPayload: payload.qrPayload, timestamp: payload.deviceTimestamp, deviceId: payload.deviceId, latitude: payload.latitude, longitude: payload.longitude }
+      { type: 'check_in', qrPayload: payload.qrPayload, timestamp: payload.deviceTimestamp, deviceId: payload.deviceId, latitude: payload.latitude, longitude: payload.longitude, workMode: payload.workMode, siteRef: payload.siteRef }
     ),
   checkOut: (payload) =>
     offlineAwareRequest(
       '/attendance/check-out',
       { method: 'POST', body: JSON.stringify(payload) },
-      { type: 'check_out', qrPayload: payload.qrPayload, timestamp: payload.deviceTimestamp, deviceId: payload.deviceId, latitude: payload.latitude, longitude: payload.longitude }
+      { type: 'check_out', qrPayload: payload.qrPayload, timestamp: payload.deviceTimestamp, deviceId: payload.deviceId, latitude: payload.latitude, longitude: payload.longitude, workMode: payload.workMode, siteRef: payload.siteRef }
     ),
   startBreak: (payload = {}) =>
     request('/attendance/break', {
@@ -183,6 +183,49 @@ export const api = {
   getAudit: () => request('/attendance/audit'),
   correctRecord: (id, reason) =>
     request(`/attendance/correct/${id}`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
+  getSites: () => request('/attendance/sites'),
+
+  // ── Layer 5: Workflow engine (Regularization / Permission / On-Duty) ──────
+  getWorkflows: (status = null) =>
+    request(`/workflows${status ? `?status=${status}` : ''}`),
+  getPendingWorkflowCount: () => request('/workflows/pending-count'),
+  createWorkflow: (payload) =>
+    request('/workflows', { method: 'POST', body: JSON.stringify(payload) }),
+  reviewWorkflow: (id, status, reviewComment = '') =>
+    request(`/workflows/${id}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, reviewComment }),
+    }),
+
+  // ── Layer 6: Payroll muster & CSV handoff ─────────────────────────────────
+  getPayrollMuster: (month, userId = null) => {
+    const params = new URLSearchParams();
+    if (month) params.append('month', month);
+    if (userId) params.append('userId', userId);
+    const qs = params.toString();
+    return request(`/reports/payroll-muster${qs ? `?${qs}` : ''}`);
+  },
+  downloadPayrollCSV: async (month) => {
+    const token = localStorage.getItem('attendance_token');
+    const qs = month ? `?month=${encodeURIComponent(month)}&format=csv` : '?format=csv';
+    const res = await fetch(`${API_BASE}/reports/payroll-muster${qs}`, {
+      headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to download payroll CSV');
+    }
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `payroll-muster-${month || new Date().toISOString().slice(0, 7)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
+    return true;
+  },
 
   downloadReportPDF: async (date) => {
     const token = localStorage.getItem('attendance_token');

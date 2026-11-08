@@ -73,6 +73,7 @@ function AppContent() {
     offlineQueue = [],
     isSyncing,
     syncOfflineQueue,
+    pendingWorkflows,
   } = store;
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -111,6 +112,7 @@ function AppContent() {
         setActiveScreen={setActiveScreen}
         currentUser={user}
         stats={stats || {}}
+        pendingWorkflows={pendingWorkflows || 0}
         isOnline={isOnline}
         offlineQueue={qLen}
         isMobileOpen={isMobileMenuOpen}

@@ -258,11 +258,32 @@ export default function Dashboard({ store }) {
       {isAdmin ? (
         <div className="stats-grid stagger-group">
           <StatCard
-            label="Present Today"
+            label="On-Site Present"
             value={stats.presentToday ?? 0}
             sub={`of ${stats.totalEmployees ?? 0} employees`}
             color="success"
             icon={<Users size={20} className="text-success" />}
+          />
+          <StatCard
+            label="On Break"
+            value={stats.onBreakToday ?? 0}
+            sub="afternoon break active"
+            color="warning"
+            icon={<Coffee size={20} className="text-warning" />}
+          />
+          <StatCard
+            label="Overtime Active"
+            value={stats.otToday ?? 0}
+            sub="post 17:00 IST sessions"
+            color="info"
+            icon={<FastForward size={20} className="text-purple" />}
+          />
+          <StatCard
+            label="Pending Workflows"
+            value={stats.pendingWorkflows ?? 0}
+            sub="regularization / permission / OD"
+            color="warning"
+            icon={<ClipboardList size={20} className="text-warning" />}
           />
           <StatCard
             label="Absent"
@@ -270,13 +291,6 @@ export default function Dashboard({ store }) {
             sub="not checked in"
             color="danger"
             icon={<AlertTriangle size={20} className="text-danger" />}
-          />
-          <StatCard
-            label="Completed Shifts"
-            value={stats.checkedOut ?? 0}
-            sub="checked out"
-            color="info"
-            icon={<CheckCircle2 size={20} className="text-info" />}
           />
           <StatCard
             label="Flagged Records"

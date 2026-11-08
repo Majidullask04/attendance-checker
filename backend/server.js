@@ -6,6 +6,8 @@ import { verifyToken } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import qrRoutes from './routes/qr.js';
 import attendanceRoutes from './routes/attendance.js';
+import workflowRoutes from './routes/workflows.js';
+import reportRoutes from './routes/reports.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -106,8 +108,18 @@ const authLimiter = rateLimit({
 app.use('/api/auth', authLimiter, authRoutes);
 
 // Protected routes (require valid JWT)
+// Layer 2: biometric terminal webhook — device-key auth inside the handler.
+// Rewrite the sub-path so the same router resolves the POST under a no-JWT mount
+// (registered BEFORE /api/attendance so biometric terminals don't need a JWT).
+app.use('/api/attendance/biometric-webhook', (req, res, next) => {
+  req.url = '/biometric-webhook';
+  attendanceRoutes(req, res, next);
+});
+app.use('/api/qr-token', verifyToken, qrRoutes);
 app.use('/api/qr-token', verifyToken, qrRoutes);
 app.use('/api/attendance', verifyToken, attendanceLimiter, attendanceRoutes);
+app.use('/api/workflows', verifyToken, workflowRoutes);
+app.use('/api/reports', verifyToken, reportRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

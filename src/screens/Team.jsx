@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { formatTime, formatDuration, getEmployeeName, renderAvatar, getInitials } from '../utils/formatters.js';
+import { MUSTER_DAY_CODES } from '../utils/attendancePolicy.js';
 import { api } from '../api/client.js';
+import { useAttendanceStore } from '../store/useStore.js';
 import {
   Download,
   LayoutGrid,
@@ -13,6 +15,8 @@ import {
   X,
   ClipboardList,
   Trash2,
+  CalendarRange,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export default function Team({ store }) {
@@ -25,11 +29,45 @@ export default function Team({ store }) {
     downloadReportPDF,
     setActiveScreen,
   } = store;
+  const { addToast } = useAttendanceStore();
 
   const [selected, setSelected] = useState(null);
   const [userRecords, setUserRecords] = useState([]);
   const [isLoadingUser, setIsLoadingUser] = useState(false);
-  const [viewMode, setViewMode] = useState('table'); // table | cards
+  const [viewMode, setViewMode] = useState('table'); // table | cards | muster
+  const [musterMonth, setMusterMonth] = useState(() => (selectedDate || '').slice(0, 7));
+  const [musterData, setMusterData] = useState(null);
+  const [isLoadingMuster, setIsLoadingMuster] = useState(false);
+
+  const loadMuster = useCallback(async (monthValue) => {
+    if (!isAdmin || !monthValue) return;
+    setIsLoadingMuster(true);
+    try {
+      const data = await api.getPayrollMuster(monthValue);
+      setMusterData(data);
+    } catch (err) {
+      addToast(err.message || 'Failed to load muster roll', 'error');
+      setMusterData(null);
+    } finally {
+      setIsLoadingMuster(false);
+    }
+  }, [isAdmin, addToast]);
+
+  useEffect(() => {
+    if (viewMode === 'muster') {
+      loadMuster(musterMonth);
+    }
+  }, [viewMode, musterMonth, loadMuster]);
+
+  const handleDownloadPayrollCSV = async () => {
+    try {
+      addToast('Generating payroll CSV…', 'info');
+      await api.downloadPayrollCSV(musterMonth);
+      addToast('Payroll muster CSV downloaded successfully.', 'success');
+    } catch (err) {
+      addToast(err.message || 'Payroll CSV export failed', 'error');
+    }
+  };
 
   useEffect(() => {
     if (!selected) {
@@ -133,6 +171,14 @@ export default function Team({ store }) {
               <LayoutGrid size={14} />
               <span>Cards</span>
             </button>
+            <button
+              className={`filter-tab ${viewMode === 'muster' ? 'active' : ''}`}
+              onClick={() => setViewMode('muster')}
+              title="Monthly Muster Roll & Payroll"
+            >
+              <CalendarRange size={14} />
+              <span>Muster</span>
+            </button>
           </div>
         </div>
       </div>
@@ -160,6 +206,124 @@ export default function Team({ store }) {
           <span className="stat-pill-label">Overtime</span>
         </div>
       </div>
+
+      {/* MUSTER ROLL VIEW (Layer 6) */}
+      {viewMode === 'muster' && (
+        <div className="muster-section fade-in">
+          <div className="muster-controls">
+            <div className="date-picker-wrap">
+              <Calendar size={14} className="text-muted" />
+              <label htmlFor="muster-month-picker" className="date-label">Month (IST):</label>
+              <input
+                id="muster-month-picker"
+                type="month"
+                className="date-input font-mono"
+                value={musterMonth}
+                onChange={(e) => setMusterMonth(e.target.value)}
+              />
+            </div>
+            <button
+              id="btn-download-payroll-csv"
+              className="btn-primary"
+              onClick={handleDownloadPayrollCSV}
+              title="Download payroll-ready CSV (Zoho Payroll / accounting import)"
+            >
+              <FileSpreadsheet size={14} />
+              <span>Export Payroll CSV</span>
+            </button>
+          </div>
+
+          {isLoadingMuster ? (
+            <div className="empty-state">
+              <div className="empty-text">Building monthly muster roll…</div>
+            </div>
+          ) : !musterData || musterData.employees.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon"><ClipboardList size={32} /></div>
+              <div className="empty-text">No employees found for {musterMonth}</div>
+            </div>
+          ) : (
+            <>
+              <div className="muster-controls">
+                <div className="muster-legend">
+                  {(musterData.legend || []).map(([code, label]) => (
+                    <span key={code} className="muster-legend-item">
+                      <span
+                        className="muster-cell muster-cell--static"
+                        style={{ color: MUSTER_DAY_CODES[code]?.color || 'var(--color-text-secondary)' }}
+                      >
+                        {code}
+                      </span>
+                      <span className="text-muted">{label}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="table-wrapper">
+                <table className="data-table muster-table">
+                  <thead>
+                    <tr>
+                      <th>Employee</th>
+                      {musterData.days.map((d) => (
+                        <th key={d} className="font-mono muster-day-head">{d}</th>
+                      ))}
+                      <th>P</th>
+                      <th>HD</th>
+                      <th>OD</th>
+                      <th>REG</th>
+                      <th>A</th>
+                      <th>Payable</th>
+                      <th>Eff Hrs</th>
+                      <th>OT Hrs</th>
+                      <th>Late</th>
+                    </tr>
+                  </thead>
+                  <tbody className="stagger-group">
+                    {musterData.employees.map((emp) => {
+                      const t = emp.totals;
+                      return (
+                        <tr key={emp.id} className="interactive-item">
+                          <td>
+                            <div className="user-cell">
+                              <div className="user-avatar">{renderAvatar(null, getInitials(emp.email || emp.name))}</div>
+                              <div>
+                                <div className="user-name">{getEmployeeName(emp)}</div>
+                                <div className="user-email font-mono">{emp.department}</div>
+                              </div>
+                            </div>
+                          </td>
+                          {musterData.days.map((d) => {
+                            const cell = emp.cells[d] || { code: '-', label: 'No Punch' };
+                            return (
+                              <td key={d} className="muster-day-cell" title={cell.label}>
+                                <span
+                                  className="muster-cell font-mono"
+                                  style={{ color: MUSTER_DAY_CODES[cell.code]?.color || 'var(--color-text-secondary)' }}
+                                >
+                                  {cell.code}
+                                </span>
+                              </td>
+                            );
+                          })}
+                          <td className="font-mono">{t.presentFullDays}</td>
+                          <td className="font-mono">{t.halfDays}</td>
+                          <td className="font-mono">{t.onDutyDays}</td>
+                          <td className="font-mono">{t.regularizedDays}</td>
+                          <td className="font-mono">{t.absentDays}</td>
+                          <td className="font-mono font-bold">{t.totalPayableDays}</td>
+                          <td className="font-mono">{t.totalEffectiveHours}</td>
+                          <td className="font-mono">{t.totalOvertimeHours > 0 ? `+${t.totalOvertimeHours}` : '0'}</td>
+                          <td className="font-mono">{t.lateArrivalCount}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* TABLE VIEW */}
       {viewMode === 'table' && (

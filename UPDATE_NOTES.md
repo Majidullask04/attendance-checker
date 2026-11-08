@@ -1,3 +1,34 @@
+# Update Notes: v1.2.0 (Zoho People 6-Layer Attendance Architecture)
+
+Implements the full 6-layer Zoho People pipeline — capture → validation → database → workflows → approvals → payroll:
+
+## Layer 2 — Multi-Modal Capture
+- Every punch now records `capture_method` (`QR_KIOSK_SIGNED`, `GPS_MOBILE_GEOFENCE`, `BIOMETRIC_TERMINAL`, `REGULARIZED_BY_ADMIN`), `ip_address` (x-forwarded-for aware), `gps_accuracy`, `distance_meters`, `geofence_status`, `arrival_status`, `device_info` (WEB_DESKTOP / ANDROID_CAPACITOR / MOBILE_WEB / KIOSK), `work_mode` + `site_code`.
+- New work-mode selector on the Check-In screen (HQ Workshop / EPC Project Site / On-Duty Visit), tagged to each scan.
+- `POST /api/attendance/biometric-webhook` — on-site fingerprint/face terminals push punches directly (`x-device-key: BIOMETRIC_DEVICE_KEY` env required). Accepts `IN/OUT/BREAK_IN/BREAK_OUT/OT_IN/OT_OUT`, employee code or email, and reconciles the daily rollup instantly.
+
+## Layer 3 — Validation Rules Engine (`backend/utils/validationEngine.js`, `src/utils/attendancePolicy.js`)
+- **Duplicate punch cooldown**: identical punch type within 120s → `409`.
+- **Strict shift state machine**: check-in required before break/checkout/OT; open break blocks OT; checkout auto-closes an open break (never corrupts break math).
+- **Multi-site geofence**: Haversine distance against `sites_geofences` (HQ Workshop Hyderabad + EPC substations, 250–400m radii). Tags `IN_ZONE` / `OUTSIDE_GEOFENCE` / `APPROVED_ON_DUTY`; out-of-geofence punches are flagged for admin review.
+- **IST windows**: 06:00–09:00 on-time · 09:00–09:15 grace buffer · >09:15 late · OT only after 17:00 IST.
+- **Day math**: gross − break + permission credit vs 480-min shift; 10-min round-off for a full day; 240-min OT cap.
+
+## Layer 4 — Database (`backend/db.js`, all migrations idempotent)
+- `sites_geofences` (seeded), extended `attendance_records` columns, `daily_attendance_summary` (materialized rollup keyed `user_id + date_ist`, auto-recomputed after every punch/approval/offline sync), `workflow_requests`, `audit_logs`.
+
+## Layer 5 — Workflow & Approval Engine (`backend/routes/workflows.js`)
+- `GET/POST /api/workflows` + `PATCH /api/workflows/:id/review` for **Regularization** (auto-writes corrected punches as `REGULARIZED_BY_ADMIN`), **Permission** (30–120 min credited toward effective hours), **On-Duty** (`day_status = ON_DUTY`, payable 1.0).
+- Approval Center screen now has two tabs — **Attendance Workflows** (status filters + 1-click approve/reject) and **User Accounts** — plus live badge counts on the sidebar.
+- Employees raise requests from **My Records** via the Raise Request bar/modal.
+
+## Layer 6 — Reports, Dashboard & Payroll
+- `GET /api/reports/payroll-muster?month=YYYY-MM` — monthly muster matrix (`P`, `HD`, `OD`, `REG`, `A`, `WO`) + per-employee payroll totals (payable days, effective hours, deficit hours, OT hours, late count).
+- `&format=csv` (or the new **Export Payroll CSV** button on Team → Muster) emits a UTF-8 payroll-ready CSV for Zoho Payroll / accounting import.
+- Operations dashboard adds **On-Site Present / On Break / Overtime Active / Pending Workflows** telemetry cards.
+
+---
+
 # Update Notes: v1.1.0 (Timezone Fix, Shift Policy, Break Countdown, OT & PDF Reports)
 
 ## 🐛 Bug Fixed: "Scanned but still Absent on the Admin Dashboard"
