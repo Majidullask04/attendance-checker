@@ -5,9 +5,9 @@ import { formatTime } from '../utils/formatters.js';
 import { POLICY, getZonedNow, timeToMinutes } from '../config/policy.js';
 import QRGenerator from '../components/QRGenerator.jsx';
 import QRScanner from '../components/QRScanner.jsx';
+import FaceCaptureModal from '../components/FaceCaptureModal.jsx';
 import DayTimeline from '../components/DayTimeline.jsx';
 import {
-  Camera,
   Coffee,
   FastForward,
   Square,
@@ -16,7 +16,9 @@ import {
   ClipboardList,
   AlertTriangle,
   WifiOff,
+  ScanFace,
 } from 'lucide-react';
+import { Camera } from 'lucide-react';
 
 function BreakCountdown({ breakStartTime }) {
   const [elapsed, setElapsed] = useState(() => {
@@ -105,9 +107,19 @@ export default function CheckIn({ store }) {
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scannerMode, setScannerMode] = useState('auto'); // auto | break_end | ot_start | ot_end
+  const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
+  const [pendingSelfie, setPendingSelfie] = useState(null);
+  const { faceEnrollment, faceVerifyEnabled, setFaceVerifyEnabled, loadFaceEnrollment } = store;
 
   const recordedTime = currentCheckIn?.recorded_at || currentCheckIn?.recordedAt;
   const shiftTimer = useTimer(recordedTime);
+
+  // Face verify is only wired into the check-in path (Layer 2 selfie capture)
+  const faceApplicable = faceVerifyEnabled && isOnline && !isOfflineUnsupported();
+
+  function isOfflineUnsupported() {
+    return typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia;
+  }
 
   // Check current IST time to determine if post-5:00 PM (OT eligible)
   const [isPost5PM, setIsPost5PM] = useState(() => {
@@ -128,6 +140,19 @@ export default function CheckIn({ store }) {
     setIsScannerOpen(true);
   };
 
+  const handleFaceCaptured = useCallback(
+    (selfie) => {
+      setPendingSelfie(selfie);
+      setIsFaceModalOpen(false);
+      // Refresh enrollment locally if this capture enrolled the employee
+      loadFaceEnrollment();
+      // Continue into the required station QR scan
+      setScannerMode('check_in');
+      setIsScannerOpen(true);
+    },
+    [loadFaceEnrollment]
+  );
+
   const handleScanSuccess = useCallback(
     async (scannedString) => {
       setIsScannerOpen(false);
@@ -139,12 +164,13 @@ export default function CheckIn({ store }) {
       } else if (scannerMode === 'ot_end' || attendanceState === 'ot_active') {
         await endOT(scannedString);
       } else if (attendanceState === 'idle') {
-        await checkInWithQR(scannedString);
+        await checkInWithQR(scannedString, pendingSelfie);
+        setPendingSelfie(null);
       } else if (attendanceState === 'checked_in') {
         await checkOutWithQR(scannedString);
       }
     },
-    [scannerMode, attendanceState, endBreak, startOT, endOT, checkInWithQR, checkOutWithQR]
+    [scannerMode, attendanceState, pendingSelfie, endBreak, startOT, endOT, checkInWithQR, checkOutWithQR]
   );
 
   // Admin View
@@ -203,6 +229,32 @@ export default function CheckIn({ store }) {
               <span>{label}</span>
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Layer 2: Face verification toggle + enrolled status */}
+      <div className="workmode-bar fade-in">
+        <div className="workmode-label">
+          <ScanFace size={14} className="text-accent" />
+          <span>
+            Face Verification {faceEnrollment.enrolled ? '(enrolled)' : '(not enrolled — first check-in enrolls)'}
+          </span>
+        </div>
+        <div className="workmode-options">
+          <button
+            id="face-verify-toggle"
+            className={`filter-tab ${faceVerifyEnabled ? 'active' : ''}`}
+            onClick={() => setFaceVerifyEnabled(!faceVerifyEnabled)}
+            disabled={typeof navigator === 'undefined' || !navigator.mediaDevices}
+            title="Capture a live liveness-verified selfie with the check-in"
+          >
+            <span>{faceVerifyEnabled ? 'Face Verify: ON' : 'Face Verify: OFF'}</span>
+          </button>
+          {pendingSelfie && (
+            <button className="filter-tab active" disabled title="Verified face photo is attached to your next check-in scan">
+              <span>Face Photo Ready</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -267,11 +319,17 @@ export default function CheckIn({ store }) {
               <button
                 id="btn-open-scanner"
                 className="btn-action btn-checkin"
-                onClick={() => openScanner('check_in')}
+                onClick={() => (faceApplicable ? setIsFaceModalOpen(true) : openScanner('check_in'))}
                 disabled={isLoading}
               >
                 <span className="btn-icon"><Camera size={18} /></span>
-                <span>{isLoading ? 'Processing…' : 'Scan QR to Check In'}</span>
+                <span>
+                  {isLoading
+                    ? 'Processing…'
+                    : faceApplicable
+                      ? 'Face Verify & Scan QR to Check In'
+                      : 'Scan QR to Check In'}
+                </span>
               </button>
             )}
 
@@ -430,6 +488,15 @@ export default function CheckIn({ store }) {
           onScan={handleScanSuccess}
           onClose={() => setIsScannerOpen(false)}
           currentQRToken={currentQRToken}
+        />
+      )}
+
+      {/* Layer 2: Face Capture (liveness + 1:1 match) */}
+      {isFaceModalOpen && (
+        <FaceCaptureModal
+          enrolledSignature={faceEnrollment.signature}
+          onCapture={handleFaceCaptured}
+          onClose={() => setIsFaceModalOpen(false)}
         />
       )}
     </div>

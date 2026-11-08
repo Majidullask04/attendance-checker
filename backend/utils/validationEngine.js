@@ -236,12 +236,41 @@ export function arrivalStatusLabel(arrivalStatus) {
   }
 }
 
+// ── Layer 2: Face 1:1 signature matching (server-side trust anchor) ─────────
+export const FACE_MATCH_MIN_THRESHOLD = 0.5;
+export const FACE_SIGNATURE_LENGTH = 64;
+
+/**
+ * Cosine similarity (0.00-1.00) between live and enrolled 64-D descriptors.
+ * Returns null when either signature is unusable.
+ */
+export function compareFaceSignatures(sigA = [], sigB = []) {
+  if (
+    !Array.isArray(sigA) || !Array.isArray(sigB) ||
+    sigA.length !== sigB.length || sigA.length === 0
+  ) {
+    return null;
+  }
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < sigA.length; i++) {
+    dot += sigA[i] * sigB[i];
+    normA += sigA[i] * sigA[i];
+    normB += sigB[i] * sigB[i];
+  }
+  const similarity = dot / ((Math.sqrt(normA) * Math.sqrt(normB)) || 1);
+  return Math.round(Math.max(0, Math.min(1, similarity)) * 1000) / 1000;
+}
+
 export default {
   calculateDistanceMeters,
   classifyISTArrival,
   validatePunchSequence,
   computeDailyAttendanceSummary,
   arrivalStatusLabel,
+  compareFaceSignatures,
+  FACE_MATCH_MIN_THRESHOLD,
   STANDARD_SHIFT_MINUTES,
   MAX_DAILY_OT_MINUTES,
 };

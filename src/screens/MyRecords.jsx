@@ -16,6 +16,7 @@ import {
   HardHat,
   X,
   Clock3,
+  ScanFace,
 } from 'lucide-react';
 
 const TYPE_META = {
@@ -422,6 +423,33 @@ export default function MyRecords({ store }) {
                         <span className="badge badge--neutral">
                           {(r.verified_by || r.verifiedBy || 'QR_CODE').toUpperCase()}
                         </span>
+                        {(r.selfie_data || r.selfieSha256 || r.selfie_sha256) && (
+                          <span
+                            className="badge badge--info face-verify-badge"
+                            title={r.selfie_sha256 || r.selfieSha256 ? `Face sha256: ${r.selfie_sha256 || r.selfieSha256}` : 'Face verified capture'}
+                          >
+                            {r.selfie_data && (
+                              <img
+                                className="face-verify-thumb"
+                                src={r.selfie_data}
+                                alt="Verified selfie"
+                                width={18}
+                                height={18}
+                              />
+                            )}
+                            <ScanFace size={12} />
+                            <span>
+                              {r.selfie_sha256 || r.selfieSha256
+                                ? `Face sha256: ${(r.selfie_sha256 || r.selfieSha256).slice(0, 8)}…`
+                                : 'Face Verified'}
+                            </span>
+                          </span>
+                        )}
+                        {r.face_match_score != null && (
+                          <span className={`badge ${r.face_match_score >= 0.5 ? 'badge--success' : 'badge--danger'}`}>
+                            Match {Math.round(r.face_match_score * 100)}%
+                          </span>
+                        )}
                       </div>
 
                       <div className="record-meta font-mono">

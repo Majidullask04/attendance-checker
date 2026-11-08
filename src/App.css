@@ -3530,3 +3530,205 @@
   color: var(--color-on-surface);
   cursor: pointer;
 }
+
+/* ── Layer 2: Face Detection, Liveness & 1:1 Verification (Vantage chassis) ── */
+.face-modal {
+  width: min(420px, 92vw);
+  background: #121417;
+  border: 1px solid #2a2e34;
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  color: #e8eaed;
+}
+
+.face-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.face-modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #e8eaed;
+  text-transform: uppercase;
+}
+
+.face-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #2a2e34;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: #9aa0a6;
+  cursor: pointer;
+}
+
+.face-modal-close:hover {
+  color: #e8eaed;
+  border-color: #3c424a;
+}
+
+.face-viewfinder {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #0b0d0f;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.face-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* natural mirror view */
+}
+
+.face-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Copper corner brackets */
+.face-bracket {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #b35010;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.face-bracket--tl {
+  top: 10px;
+  left: 10px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.face-bracket--tr {
+  top: 10px;
+  right: 10px;
+  border-left: none;
+  border-bottom: none;
+}
+
+.face-bracket--bl {
+  bottom: 10px;
+  left: 10px;
+  border-right: none;
+  border-top: none;
+}
+
+.face-bracket--br {
+  bottom: 10px;
+  right: 10px;
+  border-left: none;
+  border-top: none;
+}
+
+/* Breaker-blue face-lock indicator */
+.face-lock-indicator {
+  position: absolute;
+  top: 14px;
+  right: 46px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3a4048;
+  border: 1px solid #2a2e34;
+  z-index: 2;
+}
+
+.face-lock-indicator--locked {
+  background: #0e639c;
+  border-color: #4fa3dd;
+}
+
+.face-camera-error {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  background: #0b0d0f;
+  color: #ffb4a0;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: var(--space-md);
+}
+
+/* JetBrains Mono telemetry readout */
+.face-telemetry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-sm);
+  background: #0b0d0f;
+  border: 1px solid #2a2e34;
+  border-radius: var(--radius-sm);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.72rem;
+}
+
+.face-telemetry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.face-telemetry-label {
+  color: #9aa0a6;
+  letter-spacing: 0.08em;
+}
+
+.face-telemetry-value {
+  color: #e8eaed;
+}
+
+.face-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+/* Verified selfie badge & thumbnail (MyRecords) */
+.face-verify-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  overflow: hidden;
+}
+
+.face-verify-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: cover;
+  border: 1px solid #2a2e34;
+  flex-shrink: 0;
+}

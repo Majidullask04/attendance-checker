@@ -51,6 +51,9 @@ export function useAttendanceStore() {
   // Layer 5: workflow requests (Regularization / Permission / On-Duty)
   const [workflowRequests, setWorkflowRequests] = useState([]);
   const [pendingWorkflows, setPendingWorkflows] = useState(0);
+  // Layer 2: face verification (enrolled 64-D signature + capture toggle)
+  const [faceEnrollment, setFaceEnrollment] = useState({ enrolled: false, signature: [], enrolledAt: null });
+  const [faceVerifyEnabled, setFaceVerifyEnabled] = useState(true);
 
   // Online / offline listeners
   useEffect(() => {
@@ -156,6 +159,21 @@ export function useAttendanceStore() {
     }
   }, []);
 
+  // Layer 2: load own face enrollment (64-D signature for the 1:1 live match)
+  const loadFaceEnrollment = useCallback(async () => {
+    if (!authUser) return;
+    try {
+      const data = await api.getFaceEnrollment();
+      setFaceEnrollment({
+        enrolled: Boolean(data.enrolled),
+        signature: Array.isArray(data.signature) ? data.signature : [],
+        enrolledAt: data.enrolledAt || null,
+      });
+    } catch (err) {
+      console.warn('Could not fetch face enrollment:', err);
+    }
+  }, [authUser]);
+
   const loadTeamData = useCallback(async (date = selectedDate) => {
     if (authUser?.role !== 'admin') return;
     try {
@@ -243,6 +261,7 @@ export function useAttendanceStore() {
       loadRecords();
       loadCurrentQR();
       loadWorkflows();
+      loadFaceEnrollment();
       if (authUser.role === 'admin') {
         loadTeamData();
         loadAuditData();
@@ -253,7 +272,7 @@ export function useAttendanceStore() {
         syncOfflineQueue();
       }
     }
-  }, [authUser, loadRecords, loadCurrentQR, loadTeamData, loadAuditData, syncOfflineQueue, loadWorkflows]);
+  }, [authUser, loadRecords, loadCurrentQR, loadTeamData, loadAuditData, syncOfflineQueue, loadWorkflows, loadFaceEnrollment]);
 
   // ── Admin Polling: live refresh every 10 seconds ──────────────────────────
   useEffect(() => {
@@ -324,7 +343,7 @@ export function useAttendanceStore() {
 
   // ── Check In / Check Out via API ──────────────────────────────────────────
   const checkInWithQR = useCallback(
-    async (scannedData) => {
+    async (scannedData, selfie = null) => {
       if (!canTransition(attendanceState, 'checking_in')) {
         addToast('Invalid transition state for Check In.', 'error');
         return { success: false };
@@ -350,6 +369,14 @@ export function useAttendanceStore() {
           deviceTimestamp: new Date().toISOString(),
           workMode,
           siteRef: activeLocation?.id || null,
+          ...(selfie && typeof navigator !== 'undefined' && navigator.onLine
+            ? {
+              selfieDataUrl: selfie.selfieDataUrl,
+              selfieSha256: selfie.selfieSha256,
+              faceSignature: selfie.faceSignature,
+              livenessVerified: selfie.livenessVerified,
+            }
+            : {}),
         });
 
         if (res.offline) {
@@ -373,6 +400,15 @@ export function useAttendanceStore() {
         setAttendanceState('checked_in');
         const timingMsg = res.timing === 'late' ? '⚠ Checked In (Late after 9:00 AM)' : '✓ Checked in on-time (Present)!';
         addToast(timingMsg, res.timing === 'late' ? 'warning' : 'success');
+        if (res.face?.selfieVerified) {
+          addToast(
+            res.face.enrolledNow
+              ? 'Face verified — face signature enrolled for future 1:1 checks.'
+              : `Face verified (match ${((res.face.matchScore ?? 0) * 100).toFixed(1)}%).`,
+            'success'
+          );
+          loadFaceEnrollment();
+        }
         await loadRecords();
         if (authUser?.role === 'admin') {
           loadTeamData();
@@ -387,7 +423,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [attendanceState, activeLocation, authUser, workMode, addToast, loadRecords, loadTeamData, loadAuditData]
+    [attendanceState, activeLocation, authUser, workMode, addToast, loadRecords, loadTeamData, loadAuditData, loadFaceEnrollment]
   );
 
   const checkOutWithQR = useCallback(
@@ -650,6 +686,10 @@ export function useAttendanceStore() {
     setSelectedDate,
     workMode,
     setWorkMode,
+    faceEnrollment,
+    loadFaceEnrollment,
+    faceVerifyEnabled,
+    setFaceVerifyEnabled,
     workflowRequests,
     pendingWorkflows,
     loadWorkflows,

@@ -184,6 +184,7 @@ export const api = {
   correctRecord: (id, reason) =>
     request(`/attendance/correct/${id}`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
   getSites: () => request('/attendance/sites'),
+  getFaceEnrollment: () => request('/attendance/face-enrollment'),
 
   // ── Layer 5: Workflow engine (Regularization / Permission / On-Duty) ──────
   getWorkflows: (status = null) =>

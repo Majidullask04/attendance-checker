@@ -10,6 +10,8 @@ import {
   calculateDistanceMeters,
   classifyISTArrival,
   validatePunchSequence,
+  compareFaceSignatures,
+  FACE_MATCH_MIN_THRESHOLD,
 } from '../utils/validationEngine.js';
 
 const router = Router();
@@ -148,7 +150,7 @@ router.get('/policy', (req, res) => {
 
 // POST /api/attendance/check-in
 router.post('/check-in', async (req, res) => {
-  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef } = req.body;
+  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef, selfieDataUrl, selfieSha256, faceSignature, livenessVerified } = req.body;
   const userId = req.user.id;
 
   const parsed = parseQRPayload(req.body);
@@ -156,6 +158,16 @@ router.post('/check-in', async (req, res) => {
     return res.status(400).json({ error: parsed.error });
   }
   const { data, tokenString } = parsed;
+
+  // Layer 2: selfie payload sanity (WebP preferred, JPEG WebView fallback, capped size)
+  const SELFIE_DATA_URL_RE = /^data:image\/(webp|jpeg);/;
+  const selfieOk =
+    (typeof selfieDataUrl === 'string' && SELFIE_DATA_URL_RE.test(selfieDataUrl) && selfieDataUrl.length <= 120_000 &&
+      typeof selfieSha256 === 'string' && /^[0-9a-f]{64}$/.test(selfieSha256)) ||
+    (!selfieDataUrl && !selfieSha256);
+  if (!selfieOk) {
+    return res.status(400).json({ error: 'Invalid selfie payload — expected a WebP data URL (<120KB) with a valid SHA-256 digest.' });
+  }
 
   try {
     const tokenRow = await db.getAsync(
@@ -211,12 +223,41 @@ router.post('/check-in', async (req, res) => {
 
     // Out-of-boundary punches are recorded but flagged for admin review
     const isInZone = geo.status !== 'OUTSIDE_GEOFENCE';
-    const status = !isInZone ? 'flagged' : (scanEvaluation === 'late' ? 'late' : 'verified');
+    let status = !isInZone ? 'flagged' : (scanEvaluation === 'late' ? 'late' : 'verified');
+
+    // Layer 2 face pipeline: server-side 1:1 verification + first-time enrollment
+    let faceMatch = null;
+    let enrolledNow = false;
+    if (Array.isArray(faceSignature) && faceSignature.length === 64 &&
+        faceSignature.every((v) => typeof v === 'number')) {
+      const userRow = await db.getAsync(`SELECT face_signature FROM users WHERE id = $1`, [userId]);
+      let storedSignature = null;
+      try {
+        storedSignature = userRow?.face_signature ? JSON.parse(userRow.face_signature) : null;
+      } catch {
+        storedSignature = null;
+      }
+      if (Array.isArray(storedSignature) && storedSignature.length === faceSignature.length) {
+        faceMatch = compareFaceSignatures(faceSignature, storedSignature);
+        if (faceMatch < FACE_MATCH_MIN_THRESHOLD) {
+          // Possible spoof or different person — record but flag for admin review
+          status = 'flagged';
+        }
+      } else {
+        // First-time enrollment: bind this verified capture to the employee
+        await db.runAsync(
+          `UPDATE users SET face_signature = $1, face_enrolled_at = $2 WHERE id = $3`,
+          [JSON.stringify(faceSignature), new Date().toISOString(), userId]
+        );
+        faceMatch = 1.0;
+        enrolledNow = true;
+      }
+    }
 
     await db.runAsync(
       `INSERT INTO attendance_records 
-       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref, site_code, capture_method, ip_address, gps_accuracy, distance_meters, geofence_status, arrival_status, device_info)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
+       (id, user_id, location_id, location_name, record_type, recorded_at, device_timestamp, latitude, longitude, accuracy_meters, device_id, verified_by, confidence_score, status, qr_token, work_mode, site_ref, site_code, capture_method, ip_address, gps_accuracy, distance_meters, geofence_status, arrival_status, device_info, selfie_data, selfie_sha256, face_match_score, liveness_verified)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
       [
         recordId,
         userId,
@@ -243,6 +284,10 @@ router.post('/check-in', async (req, res) => {
         geo.status,
         arrival.arrivalStatus,
         deviceInfo,
+        selfieDataUrl || null,
+        selfieSha256 || null,
+        faceMatch,
+        selfieSha256 ? (livenessVerified === false ? 0 : 1) : 0,
       ]
     );
 
@@ -267,14 +312,28 @@ router.post('/check-in', async (req, res) => {
         : scanEvaluation === 'grace'
           ? 'Checked in within the grace window (09:00–09:15 AM)'
           : 'Checked in on-time (Present)';
+    const selfieMessage = selfieSha256
+      ? enrolledNow
+        ? ' Face verified — enrolled this device passphrase-free biometric.'
+        : faceMatch != null && faceMatch >= FACE_MATCH_MIN_THRESHOLD
+          ? ` Face verified (match ${(faceMatch * 100).toFixed(1)}%).`
+          : ' Face match low — punch recorded for admin review.'
+      : '';
     res.json({
       success: true,
       record: sanitizeRecord(record),
       timing: scanEvaluation,
       zone: isInZone ? geo.status.toLowerCase() : 'out_of_zone',
       geofence: { status: geo.status, distanceMeters: geo.distance, siteCode: geo.matchedSite },
+      face: {
+        selfieVerified: Boolean(selfieSha256),
+        livenessVerified: selfieSha256 ? livenessVerified !== false : false,
+        matchScore: faceMatch,
+        enrolledNow,
+        selfieSha256: selfieSha256 || null,
+      },
       summary: rollup,
-      message: isInZone ? checkInMessage : `Outside geofence — punch recorded for admin review. ${checkInMessage}`,
+      message: (isInZone ? checkInMessage : `Outside geofence — punch recorded for admin review. ${checkInMessage}`) + selfieMessage,
     });
   } catch (err) {
     console.error('Check-in error:', err);
@@ -1350,6 +1409,33 @@ router.post('/biometric-webhook', async (req, res) => {
   } catch (err) {
     console.error('Biometric webhook error:', err);
     return res.status(500).json({ error: 'Failed to ingest biometric punch.' });
+  }
+});
+
+// ── Layer 2: Face enrollment (own 64-D signature) ───────────────────────────
+router.get('/face-enrollment', async (req, res) => {
+  try {
+    const row = await db.getAsync(
+      `SELECT face_signature, face_enrolled_at FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+    let signature = [];
+    if (row?.face_signature) {
+      try {
+        const parsed = JSON.parse(row.face_signature);
+        if (Array.isArray(parsed)) signature = parsed;
+      } catch {
+        signature = [];
+      }
+    }
+    res.json({
+      enrolled: signature.length > 0,
+      signature,
+      enrolledAt: row?.face_enrolled_at || null,
+    });
+  } catch (err) {
+    console.error('Face enrollment fetch error:', err);
+    res.status(500).json({ error: 'Failed to retrieve face enrollment.' });
   }
 });
 

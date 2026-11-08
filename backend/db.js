@@ -112,8 +112,29 @@ const initDb = async () => {
       await addColumn('geofence_status', `geofence_status TEXT`);
       await addColumn('arrival_status', `arrival_status TEXT`);
       await addColumn('device_info', `device_info TEXT`);
+      // Layer 2: Face detection, liveness & photo verification pipeline
+      await addColumn('selfie_data', `selfie_data TEXT`);
+      await addColumn('selfie_sha256', `selfie_sha256 TEXT`);
+      await addColumn('face_match_score', `face_match_score REAL`);
+      await addColumn('liveness_verified', `liveness_verified INTEGER DEFAULT 0`);
     } catch (colErr) {
       console.log('Work mode column check:', colErr.message);
+    }
+
+    // Layer 2: per-user enrolled face signature (64-D descriptor, JSON array)
+    try {
+      const userCols = await db.allAsync(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'users'`
+      );
+      const haveUser = new Set((userCols || []).map((c) => c.column_name));
+      if (!haveUser.has('face_signature')) {
+        await db.runAsync(`ALTER TABLE users ADD COLUMN face_signature TEXT`);
+      }
+      if (!haveUser.has('face_enrolled_at')) {
+        await db.runAsync(`ALTER TABLE users ADD COLUMN face_enrolled_at TIMESTAMP`);
+      }
+    } catch (userColErr) {
+      console.log('User face signature column check:', userColErr.message);
     }
 
     // Layer 4: sites_geofences — geofence coordinates per MR. ELECTRICAL WORKS site
