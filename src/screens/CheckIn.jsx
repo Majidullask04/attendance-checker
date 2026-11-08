@@ -103,6 +103,11 @@ export default function CheckIn({ store }) {
     endOT,
     isOnline,
     isLoading,
+    gpsStatus,
+    gpsCoords,
+    gpsAccuracy,
+    gpsDistance,
+    refreshGps,
   } = store;
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -264,12 +269,12 @@ export default function CheckIn({ store }) {
           {/* Status Indicator */}
           <div
             className={`checkin-status checkin-status--${attendanceState === 'checked_in'
-                ? 'success'
-                : attendanceState === 'on_break'
-                  ? 'warning'
-                  : attendanceState === 'ot_active'
-                    ? 'purple'
-                    : 'neutral'
+              ? 'success'
+              : attendanceState === 'on_break'
+                ? 'warning'
+                : attendanceState === 'ot_active'
+                  ? 'purple'
+                  : 'neutral'
               }`}
           >
             <div className="pulse-ring-wrap">
@@ -416,8 +421,36 @@ export default function CheckIn({ store }) {
               Geofence Radius: {activeLocation?.radius}m · WiFi: {activeLocation?.wifi_ssid}
             </div>
             <div className="info-card-coords font-mono">
-              GPS: {activeLocation?.lat?.toFixed(4)}, {activeLocation?.lng?.toFixed(4)}
+              {gpsStatus === 'ok' ? (
+                <>
+                  <div>Detected GPS: {gpsCoords?.lat?.toFixed(6)}, {gpsCoords?.lng?.toFixed(6)}</div>
+                  <div>Accuracy: ±{gpsAccuracy ?? '--'}m</div>
+                  {gpsDistance != null && (
+                    <div>
+                      Distance to station: {Math.round(gpsDistance)}m{activeLocation?.radius && gpsDistance <= activeLocation.radius ? ' (inside geofence)' : ' (outside geofence)'}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div>
+                  {gpsStatus === 'requesting'
+                    ? 'Locating device…'
+                    : gpsStatus === 'denied'
+                      ? 'GPS permission denied — showing station coordinates'
+                      : gpsStatus === 'unavailable'
+                        ? 'GPS unavailable on this device — showing station coordinates'
+                        : 'GPS: ' + (activeLocation?.lat?.toFixed(4)) + ', ' + (activeLocation?.lng?.toFixed(4))}
+                </div>
+              )}
             </div>
+            <button
+              type="button"
+              className="btn-action btn-checkout"
+              onClick={refreshGps}
+              style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}
+            >
+              <MapPin size={16} /> <span>Refresh GPS</span>
+            </button>
           </div>
 
           <div className="info-card">

@@ -116,7 +116,6 @@ app.use('/api/attendance/biometric-webhook', (req, res, next) => {
   attendanceRoutes(req, res, next);
 });
 app.use('/api/qr-token', verifyToken, qrRoutes);
-app.use('/api/qr-token', verifyToken, qrRoutes);
 app.use('/api/attendance', verifyToken, attendanceLimiter, attendanceRoutes);
 app.use('/api/workflows', verifyToken, workflowRoutes);
 app.use('/api/reports', verifyToken, reportRoutes);

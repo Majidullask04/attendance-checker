@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { POLICY, getZonedNow } from '../config/policy.js';
+import { useGeolocation, haversineMeters } from '../hooks/useGeolocation.js';
 
 const LOCATIONS = [
   { id: 'loc-001', name: 'Main HQ & Warehouse', lat: 28.6139, lng: 77.2090, radius: 150, wifi_ssid: 'MrElectric-HQ' },
@@ -36,6 +37,12 @@ export function useAttendanceStore() {
     generatedAt: new Date().toISOString(),
   }));
   const [activeLocation, setActiveLocation] = useState(LOCATIONS[0]);
+  // Real device GPS (replaces hardcoded / random coordinates)
+  const { status: gpsStatus, coords: gpsCoords, accuracy: gpsAccuracy, error: gpsError, refresh: refreshGps } = useGeolocation();
+  const gpsDistance = haversineMeters(
+    gpsCoords?.lat, gpsCoords?.lng,
+    activeLocation?.lat, activeLocation?.lng
+  );
   const [activeScreen, setActiveScreen] = useState('dashboard');
   const [toasts, setToasts] = useState([]);
   const [currentCheckIn, setCurrentCheckIn] = useState(null);
@@ -362,9 +369,12 @@ export function useAttendanceStore() {
 
         const res = await api.checkIn({
           qrPayload: payload,
-          latitude: activeLocation.lat + (Math.random() - 0.5) * 0.0004,
-          longitude: activeLocation.lng + (Math.random() - 0.5) * 0.0004,
-          accuracyMeters: Math.floor(Math.random() * 8) + 4,
+          latitude: gpsCoords?.lat ?? activeLocation.lat,
+          longitude: gpsCoords?.lng ?? activeLocation.lng,
+          accuracyMeters: gpsAccuracy ?? null,
+          gpsStatus,
+          gpsError,
+          gpsDistanceMeters: gpsDistance ? Math.round(gpsDistance) : null,
           deviceId: authUser?.deviceId || 'web-client',
           deviceTimestamp: new Date().toISOString(),
           workMode,
@@ -423,7 +433,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [attendanceState, activeLocation, authUser, workMode, addToast, loadRecords, loadTeamData, loadAuditData, loadFaceEnrollment]
+    [attendanceState, activeLocation, authUser, workMode, addToast, loadRecords, loadTeamData, loadAuditData, loadFaceEnrollment, gpsCoords, gpsAccuracy, gpsStatus, gpsError, gpsDistance]
   );
 
   const checkOutWithQR = useCallback(
@@ -446,9 +456,12 @@ export function useAttendanceStore() {
 
         const res = await api.checkOut({
           qrPayload: payload,
-          latitude: activeLocation.lat + (Math.random() - 0.5) * 0.0004,
-          longitude: activeLocation.lng + (Math.random() - 0.5) * 0.0004,
-          accuracyMeters: Math.floor(Math.random() * 8) + 4,
+          latitude: gpsCoords?.lat ?? activeLocation.lat,
+          longitude: gpsCoords?.lng ?? activeLocation.lng,
+          accuracyMeters: gpsAccuracy ?? null,
+          gpsStatus,
+          gpsError,
+          gpsDistanceMeters: gpsDistance ? Math.round(gpsDistance) : null,
           deviceId: authUser?.deviceId || 'web-client',
           deviceTimestamp: new Date().toISOString(),
           workMode,
@@ -480,7 +493,7 @@ export function useAttendanceStore() {
         setIsLoading(false);
       }
     },
-    [attendanceState, activeLocation, authUser, workMode, addToast, loadRecords, loadTeamData, loadAuditData]
+    [attendanceState, activeLocation, authUser, workMode, addToast, loadRecords, loadTeamData, loadAuditData, gpsCoords, gpsAccuracy, gpsStatus, gpsError, gpsDistance]
   );
 
   // ── Breaks ────────────────────────────────────────────────────────────────
@@ -682,6 +695,13 @@ export function useAttendanceStore() {
     breakStartTime,
     activeLocation,
     setActiveLocation,
+    gpsStatus,
+    gpsCoords,
+    gpsAccuracy,
+    gpsError,
+    gpsDistance,
+    refreshGps,
+    haversineMeters,
     selectedDate,
     setSelectedDate,
     workMode,
