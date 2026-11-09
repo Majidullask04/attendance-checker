@@ -425,9 +425,15 @@ router.post('/enroll-face', verifyToken, async (req, res) => {
     fallbackSignature.every((v) => typeof v === 'number' && Number.isFinite(v));
 
   try {
-    const user = await db.getAsync(`SELECT id, email, face_enrolled FROM users WHERE id = $1`, [userId]);
+    const user = await db.getAsync(`SELECT id, email, role, face_enrolled FROM users WHERE id = $1`, [userId]);
     if (!user) {
       return res.status(404).json({ error: 'User record not found.' });
+    }
+    if (user.role === 'admin') {
+      return res.status(403).json({
+        error: 'Admins are exempt from face enrollment — no Face ID is required for administrator accounts.',
+        code: 'ADMIN_EXEMPT',
+      });
     }
     if (user.face_enrolled === 1) {
       return res.status(409).json({

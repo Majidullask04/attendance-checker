@@ -32,7 +32,7 @@ const SCREENS = {
 
 function AuthGate() {
   const [mode, setMode] = useState('login'); // 'login' | 'signup'
-  const { user, isLoading, pendingApproval, isAuthBypassed } = useAuth();
+  const { user, isLoading, pendingApproval, isAuthBypassed, isAdmin } = useAuth();
 
   // DIRECT ACCESS MODE: Open platform directly without any login, Google auth, or approval page
   if (AUTH_BYPASS || isAuthBypassed) {
@@ -60,7 +60,8 @@ function AuthGate() {
   
   // Stage 3 of the auth lifecycle: an approved employee who has not yet
   // enrolled a Face ID reference photo is routed to enrollment first.
-  if (!user.faceEnrolled) {
+  // Admins are exempt — administrator accounts skip face/photo entirely.
+  if (!isAdmin && !user.faceEnrolled) {
     return <FaceEnrollmentScreen />;
   }
   

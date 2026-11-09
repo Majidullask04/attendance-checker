@@ -115,13 +115,14 @@ export default function CheckIn({ store }) {
   const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
   const [pendingSelfie, setPendingSelfie] = useState(null);
   const pendingModeRef = useRef('check_in');
-  const { faceEnrollment, faceVerifyEnabled, setFaceVerifyEnabled, loadFaceEnrollment } = store;
+  const { faceEnrollment, loadFaceEnrollment } = store;
 
   const recordedTime = currentCheckIn?.recorded_at || currentCheckIn?.recordedAt;
   const shiftTimer = useTimer(recordedTime);
 
-  // Layer 2: face verification gates every punch when enabled + online
-  const faceApplicable = faceVerifyEnabled && isOnline && !isOfflineUnsupported();
+  // Layer 2: face verification is MANDATORY for every employee punch when
+  // online with a camera — it confirms the person is on time and live present.
+  const faceApplicable = isOnline && !isOfflineUnsupported();
 
   function isOfflineUnsupported() {
     return typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia;
@@ -251,26 +252,25 @@ export default function CheckIn({ store }) {
         </div>
       </div>
 
-      {/* Layer 2: Face verification toggle + enrolled status */}
+      {/* Layer 2: mandatory 1:1 face verification status */}
       <div className="workmode-bar fade-in">
         <div className="workmode-label">
           <ScanFace size={14} className="text-accent" />
           <span>
-            Face Verification {faceEnrollment.enrolled ? '(enrolled)' : '(not enrolled — first check-in enrolls)'}
+            Face Verification {faceEnrollment.enrolled ? '(enrolled)' : '(requires enrollment)'}
           </span>
         </div>
         <div className="workmode-options">
           <button
-            id="face-verify-toggle"
-            className={`filter-tab ${faceVerifyEnabled ? 'active' : ''}`}
-            onClick={() => setFaceVerifyEnabled(!faceVerifyEnabled)}
-            disabled={typeof navigator === 'undefined' || !navigator.mediaDevices}
-            title="Capture a live liveness-verified selfie with the check-in"
+            id="face-verify-status"
+            className={`filter-tab ${faceApplicable ? 'active' : ''}`}
+            disabled
+            title="Every punch is verified 1:1 against your enrolled reference photo — liveness and identity match are required"
           >
-            <span>{faceVerifyEnabled ? 'Face Verify: ON' : 'Face Verify: OFF'}</span>
+            <span>Face Verify: REQUIRED</span>
           </button>
           {pendingSelfie && (
-            <button className="filter-tab active" disabled title="Verified face photo is attached to your next check-in scan">
+            <button className="filter-tab active" disabled title="Verified face photo is attached to your next scan">
               <span>Face Photo Ready</span>
             </button>
           )}

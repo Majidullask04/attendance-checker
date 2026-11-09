@@ -47,13 +47,20 @@ async function loadStoredFaceDescriptor(userId) {
 }
 
 // Layer 2: strict 1:1 face verification for check-out / break / OT punches.
-// When the client supplies a live descriptor it is verified against the
-// employee's enrolled descriptor and rejected with 403 on mismatch; when no
-// descriptor is supplied (offline sync, legacy clients) the punch proceeds.
-async function evaluatePunchFace(userId, userEmail, { faceDescriptor, faceSignature } = {}) {
+// Admins are fully exempt (no enrollment, no matching). When the employee
+// supplies a live descriptor it is verified against their enrolled
+// descriptor and rejected with 403 on mismatch; when no descriptor is
+// supplied (offline sync, legacy clients) the punch proceeds.
+async function evaluatePunchFace(userId, userEmail, payload, isAdminUser = false) {
   let faceMatch = null;
   let faceVerified = 0;
   let faceMethod = null;
+
+  if (isAdminUser) {
+    return { blocked: null, faceMatch, faceVerified, faceMethod };
+  }
+
+  const { faceDescriptor, faceSignature } = payload || {};
 
   if (isValidFaceVector(faceDescriptor, FACE_DESCRIPTOR_LENGTH)) {
     const storedDescriptor = await loadStoredFaceDescriptor(userId);
@@ -312,7 +319,8 @@ router.post('/check-in', async (req, res) => {
     let enrolledNow = false;
     let faceVerified = 0;
     let faceMethod = null;
-    const hasStrictDescriptor = isValidFaceVector(faceDescriptor, FACE_DESCRIPTOR_LENGTH);
+    const isAdminUser = req.user?.role === 'admin'; // admins: no face/photo detection at all
+    const hasStrictDescriptor = !isAdminUser && isValidFaceVector(faceDescriptor, FACE_DESCRIPTOR_LENGTH);
 
     if (hasStrictDescriptor) {
       const storedDescriptor = await loadStoredFaceDescriptor(userId);
@@ -342,7 +350,7 @@ router.post('/check-in', async (req, res) => {
       }
       // No strict enrollment yet: full enrollment (with reference photo) is
       // enforced at the FaceEnrollmentScreen gate — nothing to enroll here.
-    } else if (isValidFaceVector(faceSignature, LEGACY_FACE_SIGNATURE_LENGTH)) {
+    } else if (!isAdminUser && isValidFaceVector(faceSignature, LEGACY_FACE_SIGNATURE_LENGTH)) {
       // Legacy 64-D geometric signature path (offline sync / older clients)
       const storedSignature = await loadStoredFaceDescriptor(userId);
       if (Array.isArray(storedSignature) && storedSignature.length === LEGACY_FACE_SIGNATURE_LENGTH) {
@@ -462,7 +470,7 @@ router.post('/check-in', async (req, res) => {
 
 // POST /api/attendance/check-out
 router.post('/check-out', async (req, res) => {
-  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef, selfieDataUrl, selfieSha256, faceSignature, faceDescriptor, livenessVerified } = req.body;
+  const { latitude, longitude, accuracyMeters, deviceId, deviceTimestamp, workMode, siteRef, selfieDataUrl, selfieSha256, livenessVerified } = req.body;
   const userId = req.user.id;
 
   const parsed = parseQRPayload(req.body);
@@ -526,8 +534,9 @@ router.post('/check-out', async (req, res) => {
     const cleanWorkMode = ['hq', 'site', 'onduty'].includes(workMode) ? workMode : 'hq';
     const cleanSiteRef = typeof siteRef === 'string' && siteRef.trim() ? siteRef.trim().slice(0, 64) : null;
 
-    // Layer 2: strict 1:1 face verification (403 on identity mismatch)
-    const faceCheck = await evaluatePunchFace(userId, req.user.email, { faceDescriptor, faceSignature });
+    // Layer 2: strict 1:1 face verification (403 on identity mismatch).
+    // Admins are exempt — administrator punches never run biometric checks.
+    const faceCheck = await evaluatePunchFace(userId, req.user.email, req.body, req.user?.role === 'admin');
     if (faceCheck.blocked) {
       return res.status(403).json(faceCheck.blocked);
     }
@@ -608,7 +617,7 @@ router.post('/check-out', async (req, res) => {
 
 // POST /api/attendance/break - Start or End Break
 router.post('/break', async (req, res) => {
-  const { action, latitude, longitude, accuracyMeters, deviceId, selfieDataUrl, selfieSha256, faceSignature, faceDescriptor, livenessVerified } = req.body;
+  const { action, latitude, longitude, accuracyMeters, deviceId, selfieDataUrl, selfieSha256, livenessVerified } = req.body;
   const userId = req.user.id;
 
   if (!['start', 'end'].includes(action)) {
@@ -619,8 +628,9 @@ router.post('/break', async (req, res) => {
     const todayRecords = await getDayUserRecords(userId);
     const nextType = action === 'start' ? 'break_start' : 'break_end';
 
-    // Layer 2: strict 1:1 face verification (403 on identity mismatch)
-    const faceCheck = await evaluatePunchFace(userId, req.user.email, { faceDescriptor, faceSignature });
+    // Layer 2: strict 1:1 face verification (403 on identity mismatch).
+    // Admins are exempt — administrator punches never run biometric checks.
+    const faceCheck = await evaluatePunchFace(userId, req.user.email, req.body, req.user?.role === 'admin');
     if (faceCheck.blocked) {
       return res.status(403).json(faceCheck.blocked);
     }
@@ -752,7 +762,7 @@ router.post('/break', async (req, res) => {
 
 // POST /api/attendance/ot - Overtime Start or End (After 17:00 IST)
 router.post('/ot', async (req, res) => {
-  const { action, latitude, longitude, accuracyMeters, deviceId, selfieDataUrl, selfieSha256, faceSignature, faceDescriptor, livenessVerified } = req.body;
+  const { action, latitude, longitude, accuracyMeters, deviceId, selfieDataUrl, selfieSha256, livenessVerified } = req.body;
   const userId = req.user.id;
 
   if (!['start', 'end'].includes(action)) {
@@ -774,8 +784,9 @@ router.post('/ot', async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired QR token for OT.' });
     }
 
-    // Layer 2: strict 1:1 face verification (403 on identity mismatch)
-    const faceCheck = await evaluatePunchFace(userId, req.user.email, { faceDescriptor, faceSignature });
+    // Layer 2: strict 1:1 face verification (403 on identity mismatch).
+    // Admins are exempt — administrator punches never run biometric checks.
+    const faceCheck = await evaluatePunchFace(userId, req.user.email, req.body, req.user?.role === 'admin');
     if (faceCheck.blocked) {
       return res.status(403).json(faceCheck.blocked);
     }
