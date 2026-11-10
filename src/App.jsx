@@ -1,6 +1,6 @@
 import './index.css';
 import './App.css';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth, AUTH_BYPASS } from './auth/AuthContext.jsx';
 import LoginScreen from './auth/LoginScreen.jsx';
 import SignupScreen from './auth/SignupScreen.jsx';
@@ -13,21 +13,17 @@ import MobileNav from './components/MobileNav.jsx';
 import TweaksPanel from './components/TweaksPanel.jsx';
 import AdminGuard from './components/AdminGuard.jsx';
 import { ToastContainer } from './components/Toast.jsx';
-import Dashboard from './screens/Dashboard.jsx';
-import CheckIn from './screens/CheckIn.jsx';
-import MyRecords from './screens/MyRecords.jsx';
-import Team from './screens/Team.jsx';
-import AuditLog from './screens/AuditLog.jsx';
-import AdminApprovals from './screens/AdminApprovals.jsx';
 import { WifiOff, RefreshCw, LogOut, Clock, ArrowUpCircle, Menu } from 'lucide-react';
 
+// Code-split each screen into its own chunk so the initial bundle stays lean
+// (face/QR/team/payroll modules load on demand when the screen opens).
 const SCREENS = {
-  dashboard: { comp: Dashboard, requiresAdmin: false },
-  checkin: { comp: CheckIn, requiresAdmin: false },
-  myrecords: { comp: MyRecords, requiresAdmin: false },
-  team: { comp: Team, requiresAdmin: true },
-  audit: { comp: AuditLog, requiresAdmin: true },
-  approvals: { comp: AdminApprovals, requiresAdmin: true },
+  dashboard: { comp: lazy(() => import('./screens/Dashboard.jsx')), requiresAdmin: false },
+  checkin: { comp: lazy(() => import('./screens/CheckIn.jsx')), requiresAdmin: false },
+  myrecords: { comp: lazy(() => import('./screens/MyRecords.jsx')), requiresAdmin: false },
+  team: { comp: lazy(() => import('./screens/Team.jsx')), requiresAdmin: true },
+  audit: { comp: lazy(() => import('./screens/AuditLog.jsx')), requiresAdmin: true },
+  approvals: { comp: lazy(() => import('./screens/AdminApprovals.jsx')), requiresAdmin: true },
 };
 
 function AuthGate() {
@@ -49,23 +45,32 @@ function AuthGate() {
       </div>
     );
   }
-  
+
   if (pendingApproval) return <PendingApproval />;
-  
+
   if (!user) {
     return mode === 'login'
       ? <LoginScreen onToggle={() => setMode('signup')} />
       : <SignupScreen onToggle={() => setMode('login')} />;
   }
-  
+
   // Stage 3 of the auth lifecycle: an approved employee who has not yet
   // enrolled a Face ID reference photo is routed to enrollment first.
   // Admins are exempt — administrator accounts skip face/photo entirely.
   if (!isAdmin && !user.faceEnrolled) {
     return <FaceEnrollmentScreen />;
   }
-  
+
   return <AppContent />;
+}
+
+function ScreenLoader() {
+  return (
+    <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+      <div className="live-pulse-dot" style={{ margin: '0 auto 16px' }} />
+      <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>Loading…</p>
+    </div>
+  );
 }
 
 function AppContent() {
@@ -197,10 +202,14 @@ function AppContent() {
         <main className="app-content" id="main-content" role="main">
           {screenConfig.requiresAdmin ? (
             <AdminGuard onBack={() => setActiveScreen('dashboard')}>
-              <ScreenComponent store={store} />
+              <Suspense fallback={<ScreenLoader />}>
+                <ScreenComponent store={store} />
+              </Suspense>
             </AdminGuard>
           ) : (
-            <ScreenComponent store={store} />
+            <Suspense fallback={<ScreenLoader />}>
+              <ScreenComponent store={store} />
+            </Suspense>
           )}
         </main>
       </div>
